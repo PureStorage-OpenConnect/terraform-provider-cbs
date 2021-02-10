@@ -30,10 +30,37 @@ variable "subnet" {
     type = string
 }
 
+variable "system_subnet" {
+    type = string
+}
+variable "rep_subnet" {
+    type = string
+}
+
+variable "iscsi_subnet" {
+    type = string
+}
+
+variable "mgmt_subnet" {
+    type = string
+}
+
 variable "key_name" {
     type = string
 }
 
-variable "security_group" {
+variable "rep_security_group" {
+    type = string
+}
+
+variable "iscsi_security_group" {
+    type = string
+}
+
+variable "mgmt_security_group" {
+    type = string
+}
+
+variable "array_name" {
     type = string
 }
