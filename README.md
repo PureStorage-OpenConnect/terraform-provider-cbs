@@ -47,3 +47,10 @@ can be used to specify an alternate region.
 
 **Note**: Running acceptance tests requires a valid Cloud Block Store license and will create
 actual CBS instances. CBS and AWS billing costs will apply.
+
+For assistance, please either open GitHub issues or go to the Pure Code() Slack channel here:
+
+#terraform
+https://code-purestorage.slack.com/archives/CFYKBGNMP
+
+Self-register for our Slack team at https://codeinvite.purestorage.com/
