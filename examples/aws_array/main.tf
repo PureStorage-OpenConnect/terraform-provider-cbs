@@ -1,12 +1,20 @@
+terraform {
+    required_providers {
+        cbs = {
+            source = "PureStorage-OpenConnect/cbs"
+            version = "0.1.0"
+        }
+    }
+}
 provider "cbs" {
-    aws{
+    aws {
         region = var.region
     }
 }
 
 resource "cbs_array_aws" "aws_instance" {
 
-    array_name = "tf-array"
+    array_name = var.array_name
 
     deployment_template_url = var.template_url
     deployment_role_arn = var.deployment_role_arn
@@ -18,12 +26,12 @@ resource "cbs_array_aws" "aws_instance" {
 
     pureuser_key_pair_name = var.key_name
 
-    system_subnet = var.subnet
-    replication_subnet = var.subnet
-    iscsi_subnet = var.subnet
-    management_subnet = var.subnet
+    system_subnet = var.system_subnet
+    replication_subnet = var.rep_subnet
+    iscsi_subnet = var.iscsi_subnet
+    management_subnet = var.mgmt_subnet
 
-    replication_security_group = var.security_group
-    iscsi_security_group = var.security_group
-    management_security_group = var.security_group
+    replication_security_group = var.rep_security_group
+    iscsi_security_group = var.iscsi_security_group
+    management_security_group = var.mgmt_security_group
 }
