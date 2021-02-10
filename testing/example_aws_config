@@ -1,0 +1,20 @@
+Below is an example JSON config file for the AWS acceptance tests. The config file is passed to
+the test using the TEST_ACC_AWS_PARAMS_PATH environment variable.
+
+"subnet" is used for the management, iscsi, replication, and system subnet in the test instance.
+
+"security_group" is used for the management, iscsi, and replication security group in the test
+instance.
+
+For help in configuring AWS for Cloud Block Store and to retrieve the input values required here,
+please consult the Pure Storage Knowledge Base article on setting up AWS for CBS:
+https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_AWS
+
+
+{
+    "deployment_role_arn":"arn:aws:iam::xxxxxxxxxxxx:role/example_role",
+    "license_key":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx",
+    "subnet":"subnet-xxxxxxxxxxxxxxxxx",
+    "security_group":"sg-xxxxxxxxxxxxxxxxx",
+    "pureuser_key_pair_name":"cbs_key"
+}
