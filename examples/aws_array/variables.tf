@@ -26,9 +26,6 @@ variable "license_key" {
     type = string
 }
 
-variable "subnet" {
-    type = string
-}
 
 variable "system_subnet" {
     type = string
