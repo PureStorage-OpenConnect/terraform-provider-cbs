@@ -1,11 +1,11 @@
 ---
-page_title: "cbs_array Resource - terraform-provider-cbs"
+page_title: "cbs_array_aws Resource - terraform-provider-cbs"
 subcategory: ""
 description: |-
 
 ---
 
-# cbs_array Resource
+# cbs_array_aws Resource
 
 Allows the deployment and management of a Cloud Block Store instance on AWS. The instance is deployed as a CloudFormation stack.
 

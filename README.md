@@ -28,6 +28,8 @@ https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html
 
 ## Using the Provider
 
+[Provider Documentation](https://registry.terraform.io/providers/PureStorage-OpenConnect/cbs/latest/docs)
+
 Example terraform configuration templates can be found in the examples/ subdirectory.
 
 ## Testing
