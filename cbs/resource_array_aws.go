@@ -21,7 +21,6 @@ package cbs
 import (
 	"context"
 	"log"
-	"regexp"
 	"strings"
 	"time"
 
@@ -33,8 +32,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/iancoleman/strcase"
 )
 
 var cftParams = []interface{}{
@@ -190,7 +187,10 @@ func resourceArrayAWS() *schema.Resource {
 }
 
 func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	cftSvc := m.(*cloudformation.CloudFormation)
+	cftSvc, diags := m.(*CbsService).CloudFormationService()
+	if diags.HasError() {
+		return diags
+	}
 
 	arrayName := d.Get("array_name").(string)
 	deploymentArn := d.Get("deployment_role_arn").(string)
@@ -207,7 +207,7 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 	}
 
 	for _, cftParam := range cftParams {
-		tfParam := cftToTFParam(cftParam.(string))
+		tfParam := templateToTFParam(cftParam.(string), renamedParams)
 		val := d.Get(tfParam).(string)
 
 		params = append(params, &cloudformation.Parameter{
@@ -253,7 +253,10 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 }
 
 func resourceArrayAWSRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	cftSvc := m.(*cloudformation.CloudFormation)
+	cftSvc, diags := m.(*CbsService).CloudFormationService()
+	if diags.HasError() {
+		return diags
+	}
 
 	input := &cloudformation.DescribeStacksInput{
 		StackName: aws.String(d.Id()),
@@ -289,7 +292,7 @@ func resourceArrayAWSRead(ctx context.Context, d *schema.ResourceData, m interfa
 			d.Set("alert_recipients", recips)
 		}
 		if cftParamSet.Contains(*param.ParameterKey) {
-			tfParam := cftToTFParam(*param.ParameterKey)
+			tfParam := templateToTFParam(*param.ParameterKey, renamedParams)
 			d.Set(tfParam, param.ParameterValue)
 		}
 	}
@@ -319,7 +322,10 @@ func resourceArrayAWSUpdate(ctx context.Context, d *schema.ResourceData, m inter
 }
 
 func resourceArrayAWSDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	cftSvc := m.(*cloudformation.CloudFormation)
+	cftSvc, diags := m.(*CbsService).CloudFormationService()
+	if diags.HasError() {
+		return diags
+	}
 
 	input := &cloudformation.DeleteStackInput{
 		RoleARN:   aws.String(d.Get("deployment_role_arn").(string)),
@@ -342,39 +348,6 @@ func resourceArrayAWSDelete(ctx context.Context, d *schema.ResourceData, m inter
 	}
 
 	return nil
-}
-
-func toSnake(s string) string {
-	snakeStr := strcase.ToSnake(s)
-	// Post process the string to correct some edge cases
-	if strings.Contains(snakeStr, "i_scsi") {
-		snakeStr = strings.ReplaceAll(snakeStr, "i_scsi", "iscsi")
-	}
-	exp := regexp.MustCompile("ct_([0,1])")
-	if exp.MatchString(snakeStr) {
-		snakeStr = exp.ReplaceAllString(snakeStr, "ct${1}")
-	}
-	return snakeStr
-}
-
-func convertToStringSlice(vals []interface{}) []string {
-	strs := make([]string, len(vals))
-	for i := range vals {
-		strs[i] = vals[i].(string)
-	}
-	return strs
-}
-
-// returns the corresponding terraform schema parameter name given a cloudformation template
-// parameter name.
-func cftToTFParam(cftParam string) string {
-	var tfParam string
-	if renamedParam, ok := renamedParams[cftParam]; ok {
-		tfParam = renamedParam
-	} else {
-		tfParam = toSnake(cftParam)
-	}
-	return tfParam
 }
 
 func expandTags(m map[string]interface{}) []*cloudformation.Tag {

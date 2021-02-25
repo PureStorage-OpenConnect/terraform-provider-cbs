@@ -24,8 +24,11 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/go-azure-helpers/authentication"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/stretchr/testify/require"
 )
 
 var testAccProvider *schema.Provider
@@ -51,7 +54,7 @@ func TestProvider_impl(t *testing.T) {
 
 func TestAccProvider_emptyConfig(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccUnsetAWSPreCheck(t) },
 		ProviderFactories: testAccProvidersFactory,
 		CheckDestroy:      nil,
 		Steps: []resource.TestStep{
@@ -65,12 +68,40 @@ func TestAccProvider_emptyConfig(t *testing.T) {
 
 func TestAccProvider_emptyAWSConfig(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccUnsetAWSPreCheck(t) },
 		ProviderFactories: testAccProvidersFactory,
 		CheckDestroy:      nil,
 		Steps: []resource.TestStep{
 			{
 				Config:      testProviderEmptyAWSConfig(),
+				ExpectError: regexp.MustCompile("No AWS region specified."),
+			},
+		},
+	})
+}
+
+func TestAccProvider_unmatchedConfig(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccCBSPreCheck(t) },
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      nil,
+		Steps: []resource.TestStep{
+			{
+				Config:      testProviderUnmatchedConfig(),
+				ExpectError: regexp.MustCompile("No AWS region specified."),
+			},
+		},
+	})
+}
+
+func TestAccProvider_allConfig(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccCBSPreCheck(t) },
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      nil,
+		Steps: []resource.TestStep{
+			{
+				Config:      testProviderAllConfig(),
 				ExpectError: regexp.MustCompile("No AWS region specified."),
 			},
 		},
@@ -89,6 +120,23 @@ func testProviderEmptyAWSConfig() string {
 		aws {}
 	}
 	`) + testInvalidAWSArrayConfig()
+}
+
+func testProviderUnmatchedConfig() string {
+	return fmt.Sprintf(`
+    provider "cbs" {
+        azure {}
+    }
+    `) + testInvalidAWSArrayConfig()
+}
+
+func testProviderAllConfig() string {
+	return fmt.Sprintf(`
+    provider "cbs" {
+		aws {}
+		azure {}
+    }
+    `) + testInvalidAWSArrayConfig()
 }
 
 // For the test to initialize the provider, the configuration must contain a resource. We add this
@@ -122,7 +170,81 @@ func testInvalidAWSArrayConfig() string {
 	}`)
 }
 
-func testAccPreCheck(t *testing.T) {
+func testAccUnsetAWSPreCheck(t *testing.T) {
 	// Make sure the AWS_DEFAULT_REGION var is unset, so that we can test explicit provider configurations
 	os.Unsetenv(awsRegionVar)
+}
+
+func TestAccProvider_azureCLIAuth(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		return
+	}
+
+	// Support only Azure CLI authentication
+	builder := &authentication.Builder{
+		Environment:           azureEnvironment,
+		SupportsAzureCliToken: true,
+	}
+	_, diags := buildAzureClient(builder)
+	if diags != nil && diags.HasError() {
+		t.Fatalf("err: %+v", diags)
+	}
+}
+
+func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		return
+	}
+
+	// Support only Service Principal authentication
+	testAccAzureConfigPreCheck(t)
+
+	builder := &authentication.Builder{
+		SubscriptionID:           os.Getenv(azureSubscriptionID),
+		ClientID:                 os.Getenv(azureClientID),
+		ClientSecret:             os.Getenv(azureClientSecret),
+		TenantID:                 os.Getenv(azureTenantID),
+		Environment:              azureEnvironment,
+		SupportsClientSecretAuth: true,
+	}
+	_, diags := buildAzureClient(builder)
+	if diags != nil && diags.HasError() {
+		t.Fatalf("err: %+v", diags)
+	}
+}
+
+func testAccAzureConfigPreCheck(t *testing.T) {
+	variables := []string{
+		azureSubscriptionID,
+		azureClientID,
+		azureTenantID,
+		azureClientSecret,
+	}
+
+	for _, variable := range variables {
+		value := os.Getenv(variable)
+		if value == "" {
+			t.Fatalf("`%s` must be set for azure acceptance tests!", variable)
+		}
+	}
+}
+
+func testAccCBSPreCheck(t *testing.T) {
+	testAccUnsetAWSPreCheck(t)
+	testAccAzureConfigPreCheck(t)
+}
+
+func TestProvider_HasExpectedResources(t *testing.T) {
+	expectedResources := []string{
+		"cbs_array_aws",
+		"cbs_array_azure",
+	}
+
+	resources := testAccProvider.ResourcesMap
+	require.Equal(t, len(expectedResources), len(resources), "Got an unexpected number of resources.")
+
+	for _, resource := range expectedResources {
+		require.Contains(t, resources, resource, "An expected resource was not registered.")
+		require.NotNil(t, resources[resource], "A resource schema is nil.")
+	}
 }

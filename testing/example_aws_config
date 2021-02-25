@@ -6,8 +6,8 @@ the test using the TEST_ACC_AWS_PARAMS_PATH environment variable.
 "security_group" is used for the management, iscsi, and replication security group in the test
 instance.
 
-For help in configuring AWS for Cloud Block Store and to retrieve the input values required here,
-please consult the Pure Storage Knowledge Base article on setting up AWS for CBS:
+For help with the configuration of AWS for Cloud Block Store and to retrieve the input values required here,
+refer to the Pure Storage Knowledge Base article on setting up AWS for CBS:
 https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_AWS
 
 

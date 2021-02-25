@@ -53,23 +53,6 @@ const awsParamsPathVar = "TEST_ACC_AWS_PARAMS_PATH"
 // 6.1.0 template
 const deploymentTemplateURL = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.a344cba1-670c-43b9-816f-5ea5796b14ef.template"
 
-func TestCbs_toSnake(t *testing.T) {
-
-	m := map[string]string{
-		"ArrayName":              "array_name",
-		"ISCSISubnet":            "iscsi_subnet",
-		"ReplicationEndpointCT0": "replication_endpoint_ct0",
-		"iSCSIEndpointCT1":       "iscsi_endpoint_ct1",
-	}
-
-	for camel, snakeExp := range m {
-		snakeStr := toSnake(camel)
-		if snakeStr != snakeExp {
-			t.Errorf("error converting camel case to snake case, expected: %s, actual: %s", snakeExp, snakeStr)
-		}
-	}
-}
-
 // Basic test of an AWS array. Spins up a new instance, makes sure it exists, and tests that
 // the parameter and output values are all correctly stored in the Terraform state. Then try
 // an update, confirm that it failed, and make sure the state is still correct
@@ -258,7 +241,10 @@ func testAccCheckAllAttrs(resourceName string, arrayName string, senderDomain st
 }
 
 func testAccCheckDestroy(s *terraform.State) error {
-	cftSvc := testAccProvider.Meta().(*cloudformation.CloudFormation)
+	cftSvc, diags := testAccProvider.Meta().(*CbsService).CloudFormationService()
+	if diags.HasError() {
+		return fmt.Errorf("err: %+v", diags)
+	}
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "cbs_array_aws" {
@@ -286,7 +272,10 @@ func testAccCheckDestroy(s *terraform.State) error {
 
 func testAccArrayAwsExists(resourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		cftSvc := testAccProvider.Meta().(*cloudformation.CloudFormation)
+		cftSvc, diags := testAccProvider.Meta().(*CbsService).CloudFormationService()
+		if diags.HasError() {
+			return fmt.Errorf("err: %+v", diags)
+		}
 
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {

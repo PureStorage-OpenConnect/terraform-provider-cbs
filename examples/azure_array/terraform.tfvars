@@ -1,0 +1,19 @@
+#Variables
+array_name = "terraform-example-instance"
+location = "location_xxxx"
+resource_group_name = "resource_xxxx"
+license_key = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx"
+log_sender_domain = "example-company.org"
+alert_recipients = ["admin1@example-company.org", "admin2@example-company.org"]
+array_model = "V10MUR1"
+zone = 1
+virtual_network = "VN-xxxxxxxxxxxxxx"
+management_subnet = "SN-xxxxxxxxxxxxxx"
+system_subnet = "SN-xxxxxxxxxxxxxx"
+iscsi_subnet = "SN-xxxxxxxxxxxxxx"
+replication_subnet = "SN-xxxxxxxxxxxxxx"
+management_resource_group = "management_resource_xxxx"
+system_resource_group = "system_resource_xxxx"
+iscsi_resource_group = "iscsi_resource_xxxx"
+replication_resource_group = "replication_resource_xxxx"
+groups = ["group_xxxx"]
