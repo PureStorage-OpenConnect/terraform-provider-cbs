@@ -1,0 +1,8 @@
+{
+    "id": "Terraform-Provider-CBS",
+    "name": "Terraform Provider for Pure Cloud Block Store",
+    "filter": "devops",
+    "image": "http://code.purestorage.com/images/27_Terraform.png",
+    "featured": 1,
+    "priority": 1
+}
