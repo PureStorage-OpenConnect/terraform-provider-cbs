@@ -29,8 +29,9 @@ test-vet:
 test-pull-request: test-vet test-acc-mock
 
 tidy:
-	go fmt ./cbs
+	go get -u
 	go mod tidy -v
+	go fmt ./cbs
 	go fix ./cbs
 	go clean ./cbs
 	go clean --tags mock ./cbs
