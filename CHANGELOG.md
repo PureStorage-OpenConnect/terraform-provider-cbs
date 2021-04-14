@@ -1,3 +1,7 @@
+## 0.3.0 (April 13, 2021)
+
+* Update Purity version of cbs_array_azure from 6.1.0 to 6.1.4
+
 ## 0.2.0 (March 9, 2021)
 
 * Release of CBS on Azure support through the cbs_array_azure resource

@@ -73,105 +73,106 @@ func resourceArrayAWS() *schema.Resource {
 		UpdateContext: resourceArrayAWSUpdate,
 		DeleteContext: resourceArrayAWSDelete,
 		Schema: map[string]*schema.Schema{
-			"deployment_template_url": &schema.Schema{
+			"deployment_template_url": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"array_name": &schema.Schema{
+			"array_name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"deployment_role_arn": &schema.Schema{
+			"deployment_role_arn": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"log_sender_domain": &schema.Schema{
+			"log_sender_domain": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"alert_recipients": &schema.Schema{
+			"alert_recipients": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
 			},
-			"array_model": &schema.Schema{
+			"array_model": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"license_key": &schema.Schema{
+			"license_key": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"pureuser_key_pair_name": &schema.Schema{
+			"pureuser_key_pair_name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"system_subnet": &schema.Schema{
+			"system_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"replication_subnet": &schema.Schema{
+			"replication_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"iscsi_subnet": &schema.Schema{
+			"iscsi_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"management_subnet": &schema.Schema{
+			"management_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"replication_security_group": &schema.Schema{
+			"replication_security_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"iscsi_security_group": &schema.Schema{
+			"iscsi_security_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"management_security_group": &schema.Schema{
+			"management_security_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"tags": &schema.Schema{
+			"tags": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
 			},
-			"stack_name": &schema.Schema{
+			"stack_name": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"replication_endpoint_ct0": &schema.Schema{
+			"replication_endpoint_ct0": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"iscsi_endpoint_ct0": &schema.Schema{
+			"iscsi_endpoint_ct0": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"replication_endpoint_ct1": &schema.Schema{
+			"replication_endpoint_ct1": {
+
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"iscsi_endpoint_ct1": &schema.Schema{
+			"iscsi_endpoint_ct1": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"gui_endpoint": &schema.Schema{
+			"gui_endpoint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"management_endpoint": &schema.Schema{
+			"management_endpoint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"resume_lambda": &schema.Schema{
+			"resume_lambda": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},

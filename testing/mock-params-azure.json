@@ -1,0 +1,16 @@
+{
+    "resource_group_name": "mock_resource_group_name",
+    "location": "eastus2",
+    "license_key": "mock_license_key",
+    "pureuser_public_key": "mock_pureuser_public_key",
+    "management_subnet": "mock_management_subnet",
+    "iscsi_subnet": "mock_iscsi_subnet",
+    "replication_subnet": "mock_replication_subnet",
+    "system_subnet": "mock_system_subnet",
+    "virtual_network": "mock_virtual_network",
+    "management_resource_group": "mock_management_resource_group",
+    "iscsi_resource_group": "mock_iscsi_resource_group",
+    "replication_resource_group": "mock_replication_resource_group",
+    "system_resource_group": "mock_system_resource_group",
+    "jit_group":"jit_group"
+}

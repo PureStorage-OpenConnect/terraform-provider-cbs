@@ -10,7 +10,7 @@ description: |-
 
 Allows the deployment and management of a Cloud Block Store instance on Azure. The instance is deployed as an Azure Managed Application.
 
-The instance is deployed at Purity version 6.1.0.
+The instance is deployed at Purity version 6.1.4.
 
 Refer to the [deployment guide](https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_Azure) for information on how to configure the Azure environment for the CBS instance.
 

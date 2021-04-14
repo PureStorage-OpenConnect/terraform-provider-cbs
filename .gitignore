@@ -18,3 +18,8 @@
 .terraform
 *.tfstate
 *.tfstate.*
+**/.terraform.lock.hcl
+
+/.build/
+**/.vscode/
+

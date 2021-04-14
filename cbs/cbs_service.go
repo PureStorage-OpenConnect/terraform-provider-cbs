@@ -19,34 +19,37 @@
 package cbs
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-07-01/managedapplications"
-	"github.com/Azure/go-autorest/autorest"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 
-	"github.com/hashicorp/go-azure-helpers/authentication"
-	"github.com/hashicorp/go-azure-helpers/sender"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
+type cloudformationAPI interface {
+	CreateStack(input *cloudformation.CreateStackInput) (*cloudformation.CreateStackOutput, error)
+	DescribeStacks(input *cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
+	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
+	WaitUntilStackCreateCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput, opts ...request.WaiterOption) error
+	WaitUntilStackDeleteCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput, opts ...request.WaiterOption) error
+}
+
 type CbsService struct {
-	CloudFormation *cloudformation.CloudFormation
-	AzureClient    *AzureClient
+	CloudFormation cloudformationAPI
+	AzureClient    AzureClientAPI
+	awsRegionStr   string
+	azureConfig    azureUserConfig
 }
 
-type AzureClient struct {
-	ApplicationsClient *managedapplications.ApplicationsClient
-	GroupsClient       *graphrbac.GroupsClient
-}
-
-func (m *CbsService) CloudFormationService() (*cloudformation.CloudFormation, diag.Diagnostics) {
+func (m *CbsService) CloudFormationService() (cloudformationAPI, diag.Diagnostics) {
 	if m.CloudFormation == nil {
-		cftSvc, diags := buildSession(awsRegionStr)
+		cftSvc, diags := buildAWSSession(m.awsRegionStr)
 		if diags.HasError() {
 			return nil, diags
 		}
@@ -56,9 +59,9 @@ func (m *CbsService) CloudFormationService() (*cloudformation.CloudFormation, di
 	return m.CloudFormation, nil
 }
 
-func (m *CbsService) AzureClientService() (*AzureClient, diag.Diagnostics) {
+func (m *CbsService) AzureClientService() (AzureClientAPI, diag.Diagnostics) {
 	if m.AzureClient == nil {
-		azureClient, diags := buildAzureClient(azureBuilder)
+		azureClient, diags := buildAzureClient(m.azureConfig)
 		if diags.HasError() {
 			return nil, diags
 		}
@@ -68,7 +71,7 @@ func (m *CbsService) AzureClientService() (*AzureClient, diag.Diagnostics) {
 	return m.AzureClient, nil
 }
 
-func buildSession(region string) (*cloudformation.CloudFormation, diag.Diagnostics) {
+func buildAWSSessionPreCheck(region string) diag.Diagnostics {
 	var diags diag.Diagnostics
 	if region == "" {
 		diags = append(diags, diag.Diagnostic{
@@ -76,59 +79,20 @@ func buildSession(region string) (*cloudformation.CloudFormation, diag.Diagnosti
 			Summary: fmt.Sprintf("No AWS region specified. The AWS region must be provided either in "+
 				"the provider configuration block or with the %s environment variable.", awsRegionVar),
 		})
-		return nil, diags
+		return diags
 	}
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(region)},
-	)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-
-	cftSvc := cloudformation.New(sess)
-	return cftSvc, nil
+	return nil
 }
 
-func buildAzureClient(builder *authentication.Builder) (*AzureClient, diag.Diagnostics) {
-	var azureClient AzureClient
-	config, err := builder.Build()
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
+type AzureClientAPI interface {
+	SubscriptionID() string
+	groupsListComplete(ctx context.Context, filter string) (*[]graphrbac.ADGroup, error)
+	appsCreateOrUpdate(ctx context.Context, resourceGroupName string, applicationName string, parameters managedapplications.Application) error
+	appsGet(ctx context.Context, resourceGroupName string, applicationName string) (managedapplications.Application, error)
+	appsDelete(ctx context.Context, resourceGroupName string, applicationName string) error
+}
 
-	env, err := authentication.DetermineEnvironment(config.Environment)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-
-	// This indicates that a 429 response should not be included as a retry attempt
-	// so that we continue to retry until it succeeds. Set this behavior to keep
-	// consistent with azurerm provider.
-	autorest.Count429AsRetry = false
-
-	oauthConfig, err := config.BuildOAuthConfig(env.ActiveDirectoryEndpoint)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-	sender := sender.BuildSender("cbs")
-	auth, err := config.GetAuthorizationToken(sender, oauthConfig, env.TokenAudience)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-	graphAuth, err := config.GetAuthorizationToken(sender, oauthConfig, env.GraphEndpoint)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-
-	// Create applications client
-	client := managedapplications.NewApplicationsClient(config.SubscriptionID)
-	client.SubscriptionID = config.SubscriptionID
-	client.Client.Authorizer = auth
-	// Create groups client
-	groupClient := graphrbac.NewGroupsClient(config.TenantID)
-	groupClient.Client.Authorizer = graphAuth
-
-	azureClient.ApplicationsClient = &client
-	azureClient.GroupsClient = &groupClient
-	return &azureClient, nil
+type AzureClient struct {
+	ApplicationsClient *managedapplications.ApplicationsClient
+	GroupsClient       *graphrbac.GroupsClient
 }

@@ -1,0 +1,7 @@
+{
+    "deployment_role_arn": "mock_deployment_role_arn",
+    "license_key": "mock_license_key",
+    "pureuser_key_pair_name": "mock_pureuser_key_pair_name",
+    "subnet": "mock_subnet",
+    "security_group": "mock_security_group"
+}

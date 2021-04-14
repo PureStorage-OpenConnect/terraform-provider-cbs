@@ -42,7 +42,7 @@ const kind = "MarketPlace"
 
 // Plan block. We will expose plan as input param in future versions.
 const (
-	planName    = "cbs_azure_6_1_0"
+	planName    = "cbs_azure_6_1_4"
 	product     = "pure_storage_cloud_block_store_deployment"
 	publisher   = "purestoragemarketplaceadmin"
 	planVersion = "1.0.0"
@@ -93,7 +93,7 @@ var renamedAzureParams = map[string]string{
 	"replicationVnet": "virtual_network",
 }
 
-var azureTFOutputs = []interface{}{
+var azureTFOutputs = []string{
 	"applicationName",
 	"managedResourceGroupName",
 	"ct0Name",
@@ -114,14 +114,14 @@ func resourceArrayAzure() *schema.Resource {
 		UpdateContext: resourceArrayAzureUpdate,
 		DeleteContext: resourceArrayAzureDelete,
 		Schema: map[string]*schema.Schema{
-			"resource_group_name": &schema.Schema{
+			"resource_group_name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
 				ValidateFunc: validateResourceGroupName,
 			},
 
-			"location": &schema.Schema{
+			"location": {
 				Type:     schema.TypeString,
 				Required: true,
 				ValidateFunc: validation.StringInSlice([]string{
@@ -136,13 +136,13 @@ func resourceArrayAzure() *schema.Resource {
 			},
 
 			// parameters
-			"array_name": &schema.Schema{
+			"array_name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validateManagedApplicationName,
 			},
 
-			"alert_recipients": &schema.Schema{
+			"alert_recipients": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -150,22 +150,22 @@ func resourceArrayAzure() *schema.Resource {
 				},
 			},
 
-			"license_key": &schema.Schema{
+			"license_key": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 
-			"log_sender_domain": &schema.Schema{
+			"log_sender_domain": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 
-			"pureuser_public_key": &schema.Schema{
+			"pureuser_public_key": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"array_model": &schema.Schema{
+			"array_model": {
 				Type:     schema.TypeString,
 				Required: true,
 				ValidateFunc: validation.StringInSlice([]string{
@@ -174,44 +174,44 @@ func resourceArrayAzure() *schema.Resource {
 				}, false),
 			},
 
-			"management_subnet": &schema.Schema{
+			"management_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"system_subnet": &schema.Schema{
+			"system_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"iscsi_subnet": &schema.Schema{
+			"iscsi_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"replication_subnet": &schema.Schema{
+			"replication_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"virtual_network": &schema.Schema{
+			"virtual_network": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"management_resource_group": &schema.Schema{
+			"management_resource_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"system_resource_group": &schema.Schema{
+			"system_resource_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"iscsi_resource_group": &schema.Schema{
+			"iscsi_resource_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"replication_resource_group": &schema.Schema{
+			"replication_resource_group": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 
-			"zone": &schema.Schema{
+			"zone": {
 				Type:     schema.TypeInt,
 				Required: true,
 				ValidateFunc: validation.IntInSlice([]int{
@@ -272,47 +272,47 @@ func resourceArrayAzure() *schema.Resource {
 			},
 
 			// Outputs
-			"application_name": &schema.Schema{
+			"application_name": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"managed_resource_group_name": &schema.Schema{
+			"managed_resource_group_name": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"ct0_name": &schema.Schema{
+			"ct0_name": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"ct1_name": &schema.Schema{
+			"ct1_name": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"management_endpoint": &schema.Schema{
+			"management_endpoint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"management_endpoint_ct0": &schema.Schema{
+			"management_endpoint_ct0": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"management_endpoint_ct1": &schema.Schema{
+			"management_endpoint_ct1": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"replication_endpoint_ct0": &schema.Schema{
+			"replication_endpoint_ct0": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"replication_endpoint_ct1": &schema.Schema{
+			"replication_endpoint_ct1": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"iscsi_endpoint_ct0": &schema.Schema{
+			"iscsi_endpoint_ct0": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"iscsi_endpoint_ct1": &schema.Schema{
+			"iscsi_endpoint_ct1": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -330,15 +330,13 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	if diags.HasError() {
 		return diags
 	}
-	client := azureClient.ApplicationsClient
-	groupClient := azureClient.GroupsClient
 
 	name := d.Get("array_name").(string)
 	managedResourceGroup := toManagedResourceGroup(name)
 	resourceGroupName := d.Get("resource_group_name").(string)
 
 	if d.IsNewResource() {
-		existing, err := client.Get(ctx, resourceGroupName, name)
+		existing, err := azureClient.appsGet(ctx, resourceGroupName, name)
 		if err != nil {
 			if !responseWasNotFound(existing.Response) {
 				return diag.Errorf("failed to check for present of existing Managed Application Name %q (Resource Group %q): %+v", name, resourceGroupName, err)
@@ -354,7 +352,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		Kind:     to.StringPtr(kind),
 	}
 
-	targetResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", client.SubscriptionID, managedResourceGroup)
+	targetResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", azureClient.SubscriptionID(), managedResourceGroup)
 	parameters.ApplicationProperties = &managedapplications.ApplicationProperties{
 		ManagedResourceGroupID: to.StringPtr(targetResourceGroupId),
 	}
@@ -369,11 +367,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	params := make(map[string]interface{})
 	for _, value := range azureParams {
 		valueStr := value.(string)
-		params[valueStr] = struct {
-			Val interface{} `json:"value"`
-		}{
-			Val: d.Get(templateToTFParam(valueStr, renamedAzureParams)),
-		}
+		params[valueStr] = map[string]interface{}{"value": d.Get(templateToTFParam(valueStr, renamedAzureParams))}
 	}
 
 	approval := d.Get("jit_approval").([]interface{})[0].(map[string]interface{})
@@ -381,7 +375,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	var approvers []managedapplications.JitApproverDefinition
 	displayNameList := convertToStringSlice(approver["groups"].([]interface{}))
 	for _, displayName := range displayNameList {
-		group, err := groupGetByDisplayName(ctx, groupClient, displayName)
+		group, err := groupGetByDisplayName(ctx, azureClient, displayName)
 		if err != nil {
 			return diag.Errorf("No group found matching specified name %q: %+v", displayName, err)
 		}
@@ -405,17 +399,10 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	if v, ok := d.GetOk("alert_recipients"); ok {
 		newRecips := convertToStringSlice(v.([]interface{}))
-		params["alertRecipients"] = struct {
-			Val interface{} `json:"value"`
-		}{
-			Val: strings.Join(newRecips, ","),
-		}
+		params["alertRecipients"] = map[string]interface{}{"value": strings.Join(newRecips, ",")}
+
 	} else { // Deployment template has validation check on 'alertRecipients'. If not set, it should be "" instead of null.
-		params["alertRecipients"] = struct {
-			Val interface{} `json:"value"`
-		}{
-			Val: "",
-		}
+		params["alertRecipients"] = map[string]interface{}{"value": ""}
 	}
 
 	if v, ok := d.GetOk("tags"); ok {
@@ -424,24 +411,17 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		for _, tag := range templateTags {
 			tagsMap[tag] = tags
 		}
-		params["tagsByResource"] = struct {
-			Val interface{} `json:"value"`
-		}{
-			Val: tagsMap,
-		}
+		params["tagsByResource"] = map[string]interface{}{"value": tagsMap}
 	}
 
 	parameters.Parameters = &params
 
-	future, err := client.CreateOrUpdate(ctx, resourceGroupName, name, parameters)
+	err := azureClient.appsCreateOrUpdate(ctx, resourceGroupName, name, parameters)
 	if err != nil {
-		return diag.Errorf("failed to create Managed Application %q (Resource Group %q): %+v", name, resourceGroupName, err)
-	}
-	if err = future.WaitForCompletionRef(ctx, client.Client); err != nil {
-		return diag.Errorf("failed to wait for creation of Managed Application %q (Resource Group %q): %+v", name, resourceGroupName, err)
+		return diag.FromErr(err)
 	}
 
-	resp, err := client.Get(ctx, resourceGroupName, name)
+	resp, err := azureClient.appsGet(ctx, resourceGroupName, name)
 	if err != nil {
 		return diag.Errorf("failed to retrieve Managed Application %q (Resource Group %q): %+v", name, resourceGroupName, err)
 	}
@@ -452,13 +432,11 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	return resourceArrayAzureRead(ctx, d, m)
 }
-
 func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	azureClient, diags := m.(*CbsService).AzureClientService()
 	if diags.HasError() {
 		return diags
 	}
-	client := azureClient.ApplicationsClient
 
 	v, ok := d.GetOk("array_name")
 	if !ok {
@@ -470,7 +448,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 	managedResourceGroup := toManagedResourceGroup(appName)
 
 	resourceGroup := d.Get("resource_group_name").(string)
-	resp, err := client.Get(ctx, resourceGroup, appName)
+	resp, err := azureClient.appsGet(ctx, resourceGroup, appName)
 	if err != nil {
 		if responseWasNotFound(resp.Response) {
 			log.Printf("[WARN] Managed Application %q does not exist - removing from state", d.Id())
@@ -512,17 +490,24 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 		}
 
 		outputs := props.Outputs.(map[string]interface{})
-		azureTFOutputSet := mapset.NewSetFromSlice(azureTFOutputs)
+
+		azureTFOutputSet := mapset.NewSet()
+		for _, s := range azureTFOutputs {
+			azureTFOutputSet.Add(s)
+		}
+
 		for k, v := range outputs {
 			if v != nil {
+				v := v.(map[string]interface{})
 				if k == "floatingManagementIP" {
-					d.Set("management_endpoint", v.(map[string]interface{})["value"])
+					d.Set("management_endpoint", v["value"])
 				}
 				if azureTFOutputSet.Contains(k) {
-					d.Set(toSnake(k), v.(map[string]interface{})["value"])
+					d.Set(toSnake(k), v["value"])
 				}
 			}
 		}
+
 	}
 	return nil
 }
@@ -540,17 +525,12 @@ func resourceArrayAzureDelete(ctx context.Context, d *schema.ResourceData, m int
 	if diags.HasError() {
 		return diags
 	}
-	client := azureClient.ApplicationsClient
 
 	resourceGroup := d.Get("resource_group_name").(string)
 	appName := d.Get("array_name").(string)
-	future, err := client.Delete(ctx, resourceGroup, appName)
+	err := azureClient.appsDelete(ctx, resourceGroup, appName)
 	if err != nil {
-		return diag.Errorf("failed to delete Managed Application %q (Resource Group %q): %+v", appName, resourceGroup, err)
-	}
-
-	if err = future.WaitForCompletionRef(ctx, client.Client); err != nil {
-		return diag.Errorf("failed to wait for deleting Managed Application (Managed Application Name %q / Resource Group %q): %+v", appName, resourceGroup, err)
+		return diag.FromErr(err)
 	}
 	return nil
 }
@@ -599,14 +579,14 @@ func toManagedResourceGroup(name string) string {
 	return result
 }
 
-func groupGetByDisplayName(ctx context.Context, client *graphrbac.GroupsClient, displayName string) (*graphrbac.ADGroup, error) {
+func groupGetByDisplayName(ctx context.Context, client AzureClientAPI, displayName string) (*graphrbac.ADGroup, error) {
+
 	filter := fmt.Sprintf("displayName eq '%s'", displayName)
-	resp, err := client.ListComplete(ctx, filter)
+
+	values, err := client.groupsListComplete(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("listing Groups for filter %q: %+v", filter, err)
 	}
-
-	values := resp.Response().Value
 	if values == nil {
 		return nil, fmt.Errorf("nil values for Groups matching %q", filter)
 	}

@@ -151,7 +151,6 @@ func testAccCheckArrayAzureDestroy(s *terraform.State) error {
 	if diags.HasError() {
 		return fmt.Errorf("err: %+v", diags)
 	}
-	client := azureClient.ApplicationsClient
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
@@ -161,7 +160,7 @@ func testAccCheckArrayAzureDestroy(s *terraform.State) error {
 
 		appName := rs.Primary.Attributes["array_name"]
 		resourceGroup := rs.Primary.Attributes["resource_group_name"]
-		resp, err := client.Get(ctx, resourceGroup, appName)
+		resp, err := azureClient.appsGet(ctx, resourceGroup, appName)
 		if err != nil {
 			if responseWasNotFound(resp.Response) {
 				return nil
@@ -186,12 +185,11 @@ func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
 		if diags.HasError() {
 			return fmt.Errorf("err: %+v", diags)
 		}
-		client := azureClient.ApplicationsClient
 
 		appName := rs.Primary.Attributes["array_name"]
 		resourceGroup := rs.Primary.Attributes["resource_group_name"]
 
-		if resp, err := client.Get(ctx, resourceGroup, appName); err != nil {
+		if resp, err := azureClient.appsGet(ctx, resourceGroup, appName); err != nil {
 			if responseWasNotFound(resp.Response) {
 				return fmt.Errorf("Managed Application %q (Resource Group %q) does not exist", appName, resourceGroup)
 			}

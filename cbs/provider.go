@@ -24,8 +24,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/hashicorp/go-azure-helpers/authentication"
 )
 
 const (
@@ -40,19 +38,16 @@ const (
 	azureClientSecret   = "ARM_CLIENT_SECRET"
 )
 
-var awsRegionStr string
-var azureBuilder *authentication.Builder
-
 func Provider() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"aws": &schema.Schema{
+			"aws": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"region": &schema.Schema{
+						"region": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							DefaultFunc: schema.EnvDefaultFunc(awsRegionVar, nil),
@@ -61,7 +56,7 @@ func Provider() *schema.Provider {
 				},
 			},
 
-			"azure": &schema.Schema{
+			"azure": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
@@ -110,19 +105,20 @@ func configureProvider(ctx context.Context, d *schema.ResourceData) (interface{}
 	var cbsService CbsService
 	var diags diag.Diagnostics
 
-	awsRegionStr = awsRegion(d)
-	azureBuilder = azureConfig(d)
+	cbsService.awsRegionStr = awsRegion(d)
 
 	if _, ok := d.GetOk("aws"); ok {
-		cftSvc, diags := buildSession(awsRegionStr)
+		cftSvc, diags := buildAWSSession(cbsService.awsRegionStr)
 		if diags.HasError() {
 			return nil, diags
 		}
 		cbsService.CloudFormation = cftSvc
 	}
 
+	cbsService.azureConfig = azureMakeConfig(d)
+
 	if _, ok := d.GetOk("azure"); ok {
-		azureClient, diags := buildAzureClient(azureBuilder)
+		azureClient, diags := buildAzureClient(cbsService.azureConfig)
 		if diags.HasError() {
 			return nil, diags
 		}
@@ -147,30 +143,28 @@ func awsRegion(d *schema.ResourceData) string {
 	return ""
 }
 
-func azureConfig(d *schema.ResourceData) *authentication.Builder {
+type azureUserConfig struct {
+	SubscriptionID string
+	ClientID       string
+	ClientSecret   string
+	TenantID       string
+}
+
+func azureMakeConfig(d *schema.ResourceData) (config azureUserConfig) {
+
 	if azureL, ok := d.Get("azure").([]interface{}); ok && len(azureL) > 0 && azureL[0] != nil {
 		azureM := azureL[0].(map[string]interface{})
-		builder := &authentication.Builder{
-			SubscriptionID:           azureM["subscription_id"].(string),
-			ClientID:                 azureM["client_id"].(string),
-			ClientSecret:             azureM["client_secret"].(string),
-			TenantID:                 azureM["tenant_id"].(string),
-			Environment:              azureEnvironment,
-			SupportsClientSecretAuth: true,
-			SupportsAzureCliToken:    true,
-		}
-		return builder
+		config.SubscriptionID = azureM["subscription_id"].(string)
+		config.ClientID = azureM["client_id"].(string)
+		config.ClientSecret = azureM["client_secret"].(string)
+		config.TenantID = azureM["tenant_id"].(string)
 	}
 
-	builder := &authentication.Builder{
-		SubscriptionID:           os.Getenv(azureSubscriptionID),
-		ClientID:                 os.Getenv(azureClientID),
-		ClientSecret:             os.Getenv(azureClientSecret),
-		TenantID:                 os.Getenv(azureTenantID),
-		Environment:              azureEnvironment,
-		SupportsClientSecretAuth: true,
-		SupportsAzureCliToken:    true,
-	}
+	config.SubscriptionID = os.Getenv(azureSubscriptionID)
+	config.ClientID = os.Getenv(azureClientID)
+	config.ClientSecret = os.Getenv(azureClientSecret)
+	config.TenantID = os.Getenv(azureTenantID)
 
-	return builder
+	return
+
 }

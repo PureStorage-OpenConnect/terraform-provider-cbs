@@ -24,7 +24,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/go-azure-helpers/authentication"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
@@ -176,16 +175,16 @@ func testAccUnsetAWSPreCheck(t *testing.T) {
 }
 
 func TestAccProvider_azureCLIAuth(t *testing.T) {
+	if os.Getenv("MOCK_OUT_DIR") != "" {
+		t.Skip() // TODO:This requires Azure credentials in container, haven't set that up yet
+	}
+
 	if os.Getenv("TF_ACC") == "" {
 		return
 	}
 
 	// Support only Azure CLI authentication
-	builder := &authentication.Builder{
-		Environment:           azureEnvironment,
-		SupportsAzureCliToken: true,
-	}
-	_, diags := buildAzureClient(builder)
+	_, diags := buildAzureClient(azureUserConfig{})
 	if diags != nil && diags.HasError() {
 		t.Fatalf("err: %+v", diags)
 	}
@@ -199,15 +198,13 @@ func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
 	// Support only Service Principal authentication
 	testAccAzureConfigPreCheck(t)
 
-	builder := &authentication.Builder{
-		SubscriptionID:           os.Getenv(azureSubscriptionID),
-		ClientID:                 os.Getenv(azureClientID),
-		ClientSecret:             os.Getenv(azureClientSecret),
-		TenantID:                 os.Getenv(azureTenantID),
-		Environment:              azureEnvironment,
-		SupportsClientSecretAuth: true,
+	config := azureUserConfig{
+		SubscriptionID: os.Getenv(azureSubscriptionID),
+		ClientID:       os.Getenv(azureClientID),
+		ClientSecret:   os.Getenv(azureClientSecret),
+		TenantID:       os.Getenv(azureTenantID),
 	}
-	_, diags := buildAzureClient(builder)
+	_, diags := buildAzureClient(config)
 	if diags != nil && diags.HasError() {
 		t.Fatalf("err: %+v", diags)
 	}
