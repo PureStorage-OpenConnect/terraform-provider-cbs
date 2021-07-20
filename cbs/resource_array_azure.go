@@ -42,10 +42,10 @@ const kind = "MarketPlace"
 
 // Plan block. We will expose plan as input param in future versions.
 const (
-	planName    = "cbs_azure_6_1_6"
+	planName    = "cbs_azure_6_1_7"
 	product     = "pure_storage_cloud_block_store_deployment"
 	publisher   = "purestoragemarketplaceadmin"
-	planVersion = "1.0.9"
+	planVersion = "1.0.4"
 )
 
 var templateTags = []string{
