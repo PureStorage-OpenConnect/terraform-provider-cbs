@@ -10,21 +10,58 @@ description: |-
 
 Allows the deployment and management of a Cloud Block Store instance on Azure. The instance is deployed as an Azure Managed Application.
 
-The instance is deployed at Purity version 6.1.7.
+The instance is deployed at Purity version 6.1.8.
 
 Refer to the [deployment guide](https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_Azure) for information on how to configure the Azure environment for the CBS instance.
 
-!>Currently, destroying the Terraform resource **will not** deactivate the CBS instance. Due to this,
-we recommend that you deactivate the instance from inside the array itself. For information on how
-to do this, refer to the [relevant section](https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_Azure#Removing_Cloud_Block_Store) of the guide. If the instance is destroyed by another
-method than the one outlined in the guide, including `terraform destroy`, then you must contact
-Pure Storage Support in order to deactivate the instance.
+~>Along with the infrastructure components defined in the deployment guide, an [Azure Key Vault](https://azure.microsoft.com/en-us/services/key-vault/)
+is required to deploy Cloud Block Store in Azure using Terraform. An existing Key Vault may be used or a new
+one can be created for the array. Multiple arrays may reuse the same Key Vault. Any Azure account
+that wishes to use Terraform to perform management operations on the array must be granted `Get`,
+`Set`, `Delete`, `List`, and `Recover` permissions on secrets within the Key Vault. All secrets created
+or accessed by the CBS Terraform Provider will use a `cbs-` prefix. An example Key Vault creation using the
+`azurerm_key_vault` resource from the [azurerm provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+is shown below.
+
+~>In order to set up long term management of new arrays, the provider must obtain access to the array
+during deployment in order to obtain management credentials. In order to accomplish this, the provider
+must be supplied a private SSH key, either a file path to the key with the `pureuser_private_key_path`
+parameter or the key text itself with the `pureuser_private_key` parameter. The management credentials
+are stored in the Azure Key Vault that is specified by the `key_vault_id` parameter (see the above
+note for more information about the key vault). To retrieve the credentials, the provider requires
+access to the management port of the array, and therefore the machine running Terraform *must* be
+able to access the management subnet used for the array.
 
 ~>Updates are currently not supported for this resource.
 
 ## Example Usage
 
 ```hcl
+// retrieves information about the configuration of the azurerm provider
+// The client configuration used for the "cbs" provider must match the client configuration used
+// for the "azurerm" provider, otherwise the "cbs" provider will not be able to access the key vault.
+data "azurerm_client_config" "client_config" {}
+
+// Key Vault name must be globally unique
+resource "random_id" "vault_id" {
+    byte_length = 8
+}
+
+resource "azurerm_key_vault" "cbs_key_vault" {
+    name                        = "cbs-${random_id.vault_id.hex}"
+    location                    = "location_xxxx"
+    resource_group_name         = "resource_yyyy"
+    tenant_id                   = data.azurerm_client_config.client_config.tenant_id
+
+    sku_name = "standard"
+
+    access_policy {
+        tenant_id          = data.azurerm_client_config.client_config.tenant_id
+        object_id          = data.azurerm_client_config.client_config.object_id
+        secret_permissions = ["Get", "Set", "Delete", "List", "Recover"]
+  }
+}
+
 resource "cbs_array_azure" "azure_instance" {
 
     array_name = "terraform-example-instance"
@@ -36,17 +73,17 @@ resource "cbs_array_azure" "azure_instance" {
     alert_recipients = ["admin1@example-company.org", "admin2@example-company.org"]
     array_model = "V10MUR1"
     zone = 1
-    virtual_network = "VN-xxxxxxxxxxxxxx"
+
+    key_vault_id = azurerm_key_vault.cbs_key_vault.id
+
+    pureuser_private_key_path = "/path/to/private_key"
+
+    virtual_network_id = "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourceGroups/mock_resource_group_name/providers/Microsoft.Network/virtualNetworks/xxxxxxxx",
 
     management_subnet = "SN-xxxxxxxxxxxxxx"
     system_subnet = "SN-xxxxxxxxxxxxxx"
     iscsi_subnet = "SN-xxxxxxxxxxxxxx"
     replication_subnet = "SN-xxxxxxxxxxxxxx"
-
-    management_resource_group = "management_resource_xxxx"
-    system_resource_group = "system_resource_xxxx"
-    iscsi_resource_group = "iscsi_resource_xxxx"
-    replication_resource_group = "replication_resource_xxxx"
 
     jit_approval {
         approvers {
@@ -62,22 +99,21 @@ resource "cbs_array_azure" "azure_instance" {
 - `alert_recipients` (Optional) - List of email addresses to receive alerts.
 - `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1` or `V20MUR1`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
-- `iscsi_resource_group` (Required) - The Resource Group containing the ISCSI Virtual Network.
 - `iscsi_subnet` (Required) - Subnet containing the iSCSI interfaces on the array.
 - `jit_approval` (Required) - A Just In Time remote access configuration block. See [below for nested schema](#nestedblock--jit_approval).
+- `key_vault_id` (Required) - Key Vault where provider stores sensitive information.
 - `license_key` (Required) - Pure Storage-provided license key.
 - `location` (Required) - Azure location in which to deploy the array.
 - `log_sender_domain` (Required) - Domain name used to determine how CBS logs are parsed and treated by Pure Storage Support and Escalations.
-- `management_resource_group` (Required) - Resource Group containing the Management Network Resources on the array.
 - `management_subnet` (Required) - Subnet containing the management interfaces on the array.
-- `pureuser_public_key` (Optional) - Public ssh key to allow pureuser login.
-- `replication_resource_group` (Required) - The Resource Group containing the Replication Virtual Network.
+- `plan` (Optional) - A managed application plan configuration block. See [below for nested schema](#nestedblock--plan).
+- `pureuser_private_key_path` (Optional) - File path of the private key to enable SSH access to the controllers. You must specify one `pureuser_private_key_path` or one `pureuser_private_key`.
+- `pureuser_private_key` (Optional) - Text content of the private key to enable SSH access to the controllers. You must specify one `pureuser_private_key_path` or one `pureuser_private_key`.
 - `replication_subnet` (Required) - Subnet containing the replication interfaces on the array.
 - `resource_group_name` (Required) - Name of the resource group in which to deploy the managed application.
-- `system_resource_group` (Required) - Resource group name for the virtual network containing the system interfaces.
 - `system_subnet` (Required) - Subnet for the system interface of the Array.
 - `tags` (Optional) - A list of tags to apply to all resources in the managed application.
-- `virtual_network` (Required) - Virtual network that contains the network interfaces of the array.
+- `virtual_network_id` (Required) - The ID of the virtual network that contains the network interfaces of the array.
 - `zone` (Required) - The Availability Zone within the deployment location.
 
 
@@ -96,6 +132,15 @@ can approve JIT access requests as the maximum duration of JIT access requests.
 ### Nested Schema for `jit_approval.approvers`
 
 - `groups` (Required) - A list of Azure Active Directory groups that enable their users to approve JIT access requests.
+
+
+<a id="nestedblock--plan"></a>
+### Nested Schema for `plan`
+
+- `name` (Required) - Specifies the name of the plan from the marketplace.
+- `product` (Required) - Specifies the product of the plan from the marketplace.
+- `publisher` (Required) - Specifies the publisher of the plan.
+- `version` (Required) - Specifies the version of the plan from the marketplace.
 
 ## Attribute Reference
 

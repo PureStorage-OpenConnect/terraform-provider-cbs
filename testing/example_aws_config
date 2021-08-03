@@ -16,5 +16,5 @@ https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Bloc
     "license_key":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx",
     "subnet":"subnet-xxxxxxxxxxxxxxxxx",
     "security_group":"sg-xxxxxxxxxxxxxxxxx",
-    "pureuser_key_pair_name":"cbs_key"
+    "pureuser_key_pair_name":"cbs_key",
 }

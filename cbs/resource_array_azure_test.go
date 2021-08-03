@@ -34,20 +34,17 @@ import (
 )
 
 type cbsAzureParams struct {
-	ResourceGroupName        string `json:"resource_group_name"`
-	Location                 string `json:"location"`
-	LicenseKey               string `json:"license_key"`
-	PureuserPublicKey        string `json:"pureuser_public_key"`
-	ManagementSubnet         string `json:"management_subnet"`
-	ISCSISubnet              string `json:"iscsi_subnet"`
-	ReplicationSubnet        string `json:"replication_subnet"`
-	SystemSubnet             string `json:"system_subnet"`
-	VirtualNetwork           string `json:"virtual_network"`
-	ManagementResourceGroup  string `json:"management_resource_group"`
-	ISCSIResourceGroup       string `json:"iscsi_resource_group"`
-	ReplicationResourceGroup string `json:"replication_resource_group"`
-	SystemResourceGroup      string `json:"system_resource_group"`
-	JitGroup                 string `json:"jit_group"`
+	ResourceGroupName      string `json:"resource_group_name"`
+	Location               string `json:"location"`
+	LicenseKey             string `json:"license_key"`
+	PureuserPrivateKeyPath string `json:"pureuser_private_key_path"`
+	KeyvaultId             string `json:"keyvault_id"`
+	ManagementSubnet       string `json:"management_subnet"`
+	ISCSISubnet            string `json:"iscsi_subnet"`
+	ReplicationSubnet      string `json:"replication_subnet"`
+	SystemSubnet           string `json:"system_subnet"`
+	VirtualNetworkId       string `json:"virtual_network_id"`
+	JitGroup               string `json:"jit_group"`
 }
 
 const azureParamsPathVar = "TEST_ACC_AZURE_PARAMS_PATH"
@@ -74,7 +71,6 @@ func TestAccArrayAzure_basic(t *testing.T) {
 					testAccArrayAzureExists(resourceName),
 					testAccCheckAzureAllAttrs(resourceName, arrayName, orgDomain),
 				),
-				ExpectNonEmptyPlan: true,
 			},
 			{
 				Config:      testAccAzureBasicConfig(arrayName, orgDomain2),
@@ -95,26 +91,24 @@ func testAccAzureBasicConfig(name string, orgDomain string) string {
 		log_sender_domain = "%[2]s"
 		resource_group_name = "%[3]s"
 		license_key = "%[4]s"
-		pureuser_public_key = "%[5]s"
+		pureuser_private_key_path = "%[5]s"
 		system_subnet = "%[6]s"
 		replication_subnet = "%[7]s"
 		iscsi_subnet = "%[8]s"
 		management_subnet = "%[9]s"
-		management_resource_group = "%[10]s"
-		system_resource_group = "%[11]s"
-		iscsi_resource_group = "%[12]s"
-		replication_resource_group = "%[13]s"
-		virtual_network = "%[14]s"
-		location = "%[15]s"
+		virtual_network_id = "%[10]s"
+		location = "%[11]s"
+		key_vault_id = "%[12]s"
+
 		alert_recipients = ["user@example.com"]
 		array_model = "V10MUR1"
-		zone = 1
+		zone = 3
 
 		jit_approval {
 			activation_maximum_duration = "PT2H"
 			approvers {
 				groups = [
-					"%[16]s",
+					"%[13]s",
 				]
 			}
 		}
@@ -123,10 +117,9 @@ func testAccAzureBasicConfig(name string, orgDomain string) string {
 			foo = "bar"
 			test = "value"
 		}
-	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPublicKey, cbsAzureParam.SystemSubnet,
-		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.ManagementResourceGroup,
-		cbsAzureParam.SystemResourceGroup, cbsAzureParam.ISCSIResourceGroup, cbsAzureParam.ReplicationResourceGroup, cbsAzureParam.VirtualNetwork,
-		cbsAzureParam.Location, cbsAzureParam.JitGroup)
+	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
+		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.JitGroup)
 }
 
 // Lazy load the Azure param values from the json file specified at TEST_ACC_AZURE_PARAMS_PATH.
@@ -147,7 +140,7 @@ func loadAccAzureParams(t *testing.T) {
 }
 
 func testAccCheckArrayAzureDestroy(s *terraform.State) error {
-	azureClient, diags := testAccProvider.Meta().(*CbsService).AzureClientService()
+	azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService()
 	if diags.HasError() {
 		return fmt.Errorf("err: %+v", diags)
 	}
@@ -160,7 +153,7 @@ func testAccCheckArrayAzureDestroy(s *terraform.State) error {
 
 		appName := rs.Primary.Attributes["array_name"]
 		resourceGroup := rs.Primary.Attributes["resource_group_name"]
-		resp, err := azureClient.appsGet(ctx, resourceGroup, appName)
+		resp, err := azureClient.AppsGet(ctx, resourceGroup, appName)
 		if err != nil {
 			if responseWasNotFound(resp.Response) {
 				return nil
@@ -181,7 +174,7 @@ func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
 		}
 
 		ctx := context.Background()
-		azureClient, diags := testAccProvider.Meta().(*CbsService).AzureClientService()
+		azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService()
 		if diags.HasError() {
 			return fmt.Errorf("err: %+v", diags)
 		}
@@ -189,7 +182,7 @@ func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
 		appName := rs.Primary.Attributes["array_name"]
 		resourceGroup := rs.Primary.Attributes["resource_group_name"]
 
-		if resp, err := azureClient.appsGet(ctx, resourceGroup, appName); err != nil {
+		if resp, err := azureClient.AppsGet(ctx, resourceGroup, appName); err != nil {
 			if responseWasNotFound(resp.Response) {
 				return fmt.Errorf("Managed Application %q (Resource Group %q) does not exist", appName, resourceGroup)
 			}
@@ -205,20 +198,18 @@ func testAccCheckAzureAllAttrs(resourceName string, arrayName string, orgDomain 
 		resource.TestCheckResourceAttr(resourceName, "array_name", arrayName),
 		resource.TestCheckResourceAttr(resourceName, "location", cbsAzureParam.Location),
 		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
-		resource.TestCheckResourceAttr(resourceName, "zone", "1"),
+		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
 		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.0", "user@example.com"),
 		resource.TestCheckResourceAttr(resourceName, "array_model", "V10MUR1"),
+		resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", cbsAzureParam.PureuserPrivateKeyPath),
 		resource.TestCheckResourceAttr(resourceName, "system_subnet", cbsAzureParam.SystemSubnet),
 		resource.TestCheckResourceAttr(resourceName, "replication_subnet", cbsAzureParam.ReplicationSubnet),
 		resource.TestCheckResourceAttr(resourceName, "iscsi_subnet", cbsAzureParam.ISCSISubnet),
 		resource.TestCheckResourceAttr(resourceName, "management_subnet", cbsAzureParam.ManagementSubnet),
-		resource.TestCheckResourceAttr(resourceName, "virtual_network", cbsAzureParam.VirtualNetwork),
-		resource.TestCheckResourceAttr(resourceName, "management_resource_group", cbsAzureParam.ManagementResourceGroup),
-		resource.TestCheckResourceAttr(resourceName, "system_resource_group", cbsAzureParam.SystemResourceGroup),
-		resource.TestCheckResourceAttr(resourceName, "iscsi_resource_group", cbsAzureParam.ISCSIResourceGroup),
-		resource.TestCheckResourceAttr(resourceName, "replication_resource_group", cbsAzureParam.ReplicationResourceGroup),
+		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
+		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.activation_maximum_duration", "PT2H"),

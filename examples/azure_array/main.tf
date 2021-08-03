@@ -20,17 +20,15 @@ resource "cbs_array_azure" "azure_instance" {
     alert_recipients = var.alert_recipients
     array_model = var.array_model
     zone = var.zone
-    virtual_network = var.virtual_network
+    virtual_network_id = var.virtual_network_id
+
+    key_vault_id = var.key_vault_id
+    pureuser_private_key_path = var.key_file_path
 
     management_subnet = var.management_subnet
     system_subnet = var.system_subnet
     iscsi_subnet = var.iscsi_subnet
     replication_subnet = var.replication_subnet
-
-    management_resource_group = var.management_resource_group
-    system_resource_group = var.system_resource_group
-    iscsi_resource_group = var.iscsi_resource_group
-    replication_resource_group = var.replication_resource_group
 
     jit_approval {
         approvers {

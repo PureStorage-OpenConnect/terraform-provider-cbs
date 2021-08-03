@@ -19,13 +19,13 @@
 package cbs
 
 import (
-	"fmt"
 	"os"
 	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 
 	"github.com/stretchr/testify/require"
 )
@@ -108,41 +108,41 @@ func TestAccProvider_allConfig(t *testing.T) {
 }
 
 func testProviderEmptyConfig() string {
-	return fmt.Sprintf(`
+	return `
 	provider "cbs" {}
-	`) + testInvalidAWSArrayConfig()
+	` + testInvalidAWSArrayConfig()
 }
 
 func testProviderEmptyAWSConfig() string {
-	return fmt.Sprintf(`
+	return `
 	provider "cbs" {
 		aws {}
 	}
-	`) + testInvalidAWSArrayConfig()
+	` + testInvalidAWSArrayConfig()
 }
 
 func testProviderUnmatchedConfig() string {
-	return fmt.Sprintf(`
+	return `
     provider "cbs" {
         azure {}
     }
-    `) + testInvalidAWSArrayConfig()
+    ` + testInvalidAWSArrayConfig()
 }
 
 func testProviderAllConfig() string {
-	return fmt.Sprintf(`
+	return `
     provider "cbs" {
 		aws {}
 		azure {}
     }
-    `) + testInvalidAWSArrayConfig()
+    ` + testInvalidAWSArrayConfig()
 }
 
 // For the test to initialize the provider, the configuration must contain a resource. We add this
 // resource to the test configurations so that we can test the provider setup. The values don't matter
 // since we can verify what we need to in the provider before we check the resource values.
 func testInvalidAWSArrayConfig() string {
-	return fmt.Sprintf(`
+	return `
 	resource "cbs_array_aws" "test_array_aws" {
 
 		array_name = "invalid-array"
@@ -166,7 +166,7 @@ func testInvalidAWSArrayConfig() string {
 		replication_security_group = "sg-foo"
 		iscsi_security_group = "sg-foo"
 		management_security_group = "sg-foo"
-	}`)
+	}`
 }
 
 func testAccUnsetAWSPreCheck(t *testing.T) {
@@ -184,9 +184,9 @@ func TestAccProvider_azureCLIAuth(t *testing.T) {
 	}
 
 	// Support only Azure CLI authentication
-	_, diags := buildAzureClient(azureUserConfig{})
-	if diags != nil && diags.HasError() {
-		t.Fatalf("err: %+v", diags)
+	_, err := cloud.NewAzureClient(cloud.AzureConfig{})
+	if err != nil {
+		t.Fatalf("err: %+v", err)
 	}
 }
 
@@ -198,15 +198,16 @@ func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
 	// Support only Service Principal authentication
 	testAccAzureConfigPreCheck(t)
 
-	config := azureUserConfig{
+	config := cloud.AzureConfig{
 		SubscriptionID: os.Getenv(azureSubscriptionID),
 		ClientID:       os.Getenv(azureClientID),
 		ClientSecret:   os.Getenv(azureClientSecret),
 		TenantID:       os.Getenv(azureTenantID),
 	}
-	_, diags := buildAzureClient(config)
-	if diags != nil && diags.HasError() {
-		t.Fatalf("err: %+v", diags)
+
+	_, err := cloud.NewAzureClient(config)
+	if err != nil {
+		t.Fatalf("err: %+v", err)
 	}
 }
 

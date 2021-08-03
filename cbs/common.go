@@ -19,10 +19,13 @@
 package cbs
 
 import (
+	"io/ioutil"
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/iancoleman/strcase"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
 )
 
 func toSnake(s string) string {
@@ -56,4 +59,20 @@ func convertToStringSlice(vals []interface{}) []string {
 		strs[i] = vals[i].(string)
 	}
 	return strs
+}
+
+func getSSHPrivateKeyBytes(data *schema.ResourceData) ([]byte, error) {
+	if v, ok := data.GetOk("pureuser_private_key"); ok {
+		return []byte(v.(string)), nil
+	}
+	return ioutil.ReadFile(data.Get("pureuser_private_key_path").(string))
+}
+
+func generateSecretPayload(data *schema.ResourceData) ([]byte, error) {
+	keyContent, err := getSSHPrivateKeyBytes(data)
+	if err != nil {
+		return nil, err
+	}
+	bootstrap := auth.NewBootstrapService()
+	return bootstrap.GenerateSecretPayload(data.Get("management_endpoint").(string), keyContent)
 }

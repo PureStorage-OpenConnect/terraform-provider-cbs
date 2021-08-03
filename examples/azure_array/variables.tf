@@ -6,7 +6,7 @@ variable "resource_group_name" {
     type = string
 }
 
-variable "virtual_network" {
+variable "virtual_network_id" {
     type = string
 }
 
@@ -46,26 +46,18 @@ variable "replication_subnet" {
     type = string
 }
 
-variable "management_resource_group" {
-    type = string
-}
-
-variable "system_resource_group" {
-    type = string
-}
-
-variable "iscsi_resource_group" {
-    type = string
-}
-
-variable "replication_resource_group" {
-    type = string
-}
-
 variable "zone" {
     type = number
 }
 
 variable "array_name" {
+    type = string
+}
+
+variable "key_vault_id" {
+    type = string
+}
+
+variable "key_file_path" {
     type = string
 }

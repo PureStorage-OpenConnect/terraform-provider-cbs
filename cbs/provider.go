@@ -24,6 +24,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 )
 
 const (
@@ -31,7 +32,6 @@ const (
 )
 
 const (
-	azureEnvironment    = "public"
 	azureSubscriptionID = "ARM_SUBSCRIPTION_ID"
 	azureClientID       = "ARM_CLIENT_ID"
 	azureTenantID       = "ARM_TENANT_ID"
@@ -108,19 +108,17 @@ func configureProvider(ctx context.Context, d *schema.ResourceData) (interface{}
 	cbsService.awsRegionStr = awsRegion(d)
 
 	if _, ok := d.GetOk("aws"); ok {
-		cftSvc, diags := buildAWSSession(cbsService.awsRegionStr)
-		if diags.HasError() {
+		if _, diags := cbsService.awsClientService(); diags.HasError() {
 			return nil, diags
 		}
-		cbsService.CloudFormation = cftSvc
 	}
 
 	cbsService.azureConfig = azureMakeConfig(d)
 
 	if _, ok := d.GetOk("azure"); ok {
-		azureClient, diags := buildAzureClient(cbsService.azureConfig)
-		if diags.HasError() {
-			return nil, diags
+		azureClient, err := cloud.NewAzureClient(cbsService.azureConfig)
+		if err != nil {
+			return nil, diag.FromErr(err)
 		}
 		cbsService.AzureClient = azureClient
 	}
@@ -143,14 +141,11 @@ func awsRegion(d *schema.ResourceData) string {
 	return ""
 }
 
-type azureUserConfig struct {
-	SubscriptionID string
-	ClientID       string
-	ClientSecret   string
-	TenantID       string
-}
-
-func azureMakeConfig(d *schema.ResourceData) (config azureUserConfig) {
+func azureMakeConfig(d *schema.ResourceData) (config cloud.AzureConfig) {
+	config.SubscriptionID = os.Getenv(azureSubscriptionID)
+	config.ClientID = os.Getenv(azureClientID)
+	config.ClientSecret = os.Getenv(azureClientSecret)
+	config.TenantID = os.Getenv(azureTenantID)
 
 	if azureL, ok := d.Get("azure").([]interface{}); ok && len(azureL) > 0 && azureL[0] != nil {
 		azureM := azureL[0].(map[string]interface{})
@@ -160,11 +155,5 @@ func azureMakeConfig(d *schema.ResourceData) (config azureUserConfig) {
 		config.TenantID = azureM["tenant_id"].(string)
 	}
 
-	config.SubscriptionID = os.Getenv(azureSubscriptionID)
-	config.ClientID = os.Getenv(azureClientID)
-	config.ClientSecret = os.Getenv(azureClientSecret)
-	config.TenantID = os.Getenv(azureTenantID)
-
 	return
-
 }

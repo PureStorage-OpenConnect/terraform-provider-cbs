@@ -2,15 +2,12 @@
     "resource_group_name": "mock_resource_group_name",
     "location": "eastus2",
     "license_key": "mock_license_key",
-    "pureuser_public_key": "mock_pureuser_public_key",
+    "pureuser_private_key_path": "../testing/ssh-private-key.pem",
     "management_subnet": "mock_management_subnet",
     "iscsi_subnet": "mock_iscsi_subnet",
     "replication_subnet": "mock_replication_subnet",
     "system_subnet": "mock_system_subnet",
-    "virtual_network": "mock_virtual_network",
-    "management_resource_group": "mock_management_resource_group",
-    "iscsi_resource_group": "mock_iscsi_resource_group",
-    "replication_resource_group": "mock_replication_resource_group",
-    "system_resource_group": "mock_system_resource_group",
+    "virtual_network_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mock_resource_group_name/providers/Microsoft.Network/virtualNetworks/mock_vnet_name",
+    "keyvault_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mock_resource_group_name/providers/Microsoft.KeyVault/vaults/A00000000000000000000000",
     "jit_group":"jit_group"
 }

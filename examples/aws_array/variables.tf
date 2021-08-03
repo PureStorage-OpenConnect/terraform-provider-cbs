@@ -45,6 +45,10 @@ variable "key_name" {
     type = string
 }
 
+variable "key_file_path" {
+    type = string
+}
+
 variable "rep_security_group" {
     type = string
 }

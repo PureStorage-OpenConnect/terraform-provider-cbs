@@ -1,0 +1,40 @@
+{
+	"purity_versions": {
+		"6.1.6": {
+			"aws": {
+				"template_url": "aws_url_6.1.6"
+			},
+			"azure": {
+				"plan_name": "azure_plan_6.1.6",
+				"plan_product": "azure_product_6.1.6",
+				"plan_publisher": "azure_publisher_6.1.6",
+				"plan_version": "1.0.0"
+			},
+			"min_provider_version": "0.4.0",
+			"max_provider_version": "0.6.0"
+		},
+		"6.1.7": {
+			"aws": {
+				"template_url": "aws_url_6.1.7"
+			},
+			"azure": {
+				"plan_name": "azure_plan_6.1.7",
+				"plan_product": "azure_product_6.1.7",
+				"plan_publisher": "azure_publisher_6.1.7",
+				"plan_version": "1.0.9"
+			},
+			"min_provider_version": "0.6.0"
+		},
+		"6.1.8": {
+			"aws": {
+				"template_url": "aws_url_6.1.8"
+			},
+			"azure": {
+				"plan_name": "azure_plan_6.1.8",
+				"plan_product": "azure_product_6.1.8",
+				"plan_publisher": "azure_publisher_6.1.8",
+				"plan_version": "1.0.5"
+			}
+		}
+	}
+}

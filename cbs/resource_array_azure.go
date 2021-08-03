@@ -23,9 +23,16 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/tfazurerm"
 
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-07-01/managedapplications"
@@ -40,12 +47,12 @@ import (
 
 const kind = "MarketPlace"
 
-// Plan block. We will expose plan as input param in future versions.
+// Default managed application plan
 const (
-	planName    = "cbs_azure_6_1_7"
-	product     = "pure_storage_cloud_block_store_deployment"
-	publisher   = "purestoragemarketplaceadmin"
-	planVersion = "1.0.4"
+	defaultPlanName      = "cbs_azure_6_1_8"
+	defaultPlanProduct   = "pure_storage_cloud_block_store_deployment"
+	defaultPlanPublisher = "purestoragemarketplaceadmin"
+	defaultPlanVersion   = "1.0.3"
 )
 
 var templateTags = []string{
@@ -67,7 +74,6 @@ var azureParams = []interface{}{
 	"licenseKey",
 	"location",
 	"orgDomain",
-	"pureuserPublicKey",
 	"sku",
 	"managementSubnet",
 	"systemSubnet",
@@ -85,12 +91,8 @@ var azureParams = []interface{}{
 }
 
 var renamedAzureParams = map[string]string{
-	"orgDomain":       "log_sender_domain",
-	"sku":             "array_model",
-	"managementVnet":  "virtual_network",
-	"systemVnet":      "virtual_network",
-	"iSCSIVnet":       "virtual_network",
-	"replicationVnet": "virtual_network",
+	"orgDomain": "log_sender_domain",
+	"sku":       "array_model",
 }
 
 var azureTFOutputs = []string{
@@ -105,6 +107,11 @@ var azureTFOutputs = []string{
 	"replicationEndpointCT1",
 	"iSCSIEndpointCT0",
 	"iSCSIEndpointCT1",
+}
+
+type azureParameterValue struct {
+	valType string
+	value   interface{}
 }
 
 func resourceArrayAzure() *schema.Resource {
@@ -124,15 +131,6 @@ func resourceArrayAzure() *schema.Resource {
 			"location": {
 				Type:     schema.TypeString,
 				Required: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"australiaeast",
-					"centralus",
-					"eastus",
-					"eastus2",
-					"northeurope",
-					"westeurope",
-					"westus2",
-				}, false),
 			},
 
 			// parameters
@@ -160,9 +158,23 @@ func resourceArrayAzure() *schema.Resource {
 				Required: true,
 			},
 
-			"pureuser_public_key": {
-				Type:     schema.TypeString,
-				Optional: true,
+			"pureuser_private_key_path": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
+				ValidateFunc: validation.StringIsNotEmpty,
+			},
+			"pureuser_private_key": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
+				ValidateFunc: validation.StringIsNotEmpty,
+			},
+			"key_vault_id": {
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validateKeyVaultId,
 			},
 
 			"array_model": {
@@ -190,25 +202,10 @@ func resourceArrayAzure() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"virtual_network": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"management_resource_group": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"system_resource_group": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"iscsi_resource_group": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"replication_resource_group": {
-				Type:     schema.TypeString,
-				Required: true,
+			"virtual_network_id": {
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validation.StringIsNotEmpty,
 			},
 
 			"zone": {
@@ -252,11 +249,42 @@ func resourceArrayAzure() *schema.Resource {
 										Type:     schema.TypeList,
 										Required: true,
 										Elem: &schema.Schema{
-											Type: schema.TypeString,
+											Type:         schema.TypeString,
+											ValidateFunc: validation.StringIsNotEmpty,
 										},
 									},
 								},
 							},
+						},
+					},
+				},
+			},
+
+			"plan": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotEmpty,
+						},
+						"product": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotEmpty,
+						},
+						"publisher": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotEmpty,
+						},
+						"version": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotEmpty,
 						},
 					},
 				},
@@ -325,8 +353,8 @@ func resourceArrayAzure() *schema.Resource {
 	}
 }
 
-func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	azureClient, diags := m.(*CbsService).AzureClientService()
+func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m interface{}) (returnedDiags diag.Diagnostics) {
+	azureClient, diags := m.(*CbsService).azureClientService()
 	if diags.HasError() {
 		return diags
 	}
@@ -336,7 +364,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	resourceGroupName := d.Get("resource_group_name").(string)
 
 	if d.IsNewResource() {
-		existing, err := azureClient.appsGet(ctx, resourceGroupName, name)
+		existing, err := azureClient.AppsGet(ctx, resourceGroupName, name)
 		if err != nil {
 			if !responseWasNotFound(existing.Response) {
 				return diag.Errorf("failed to check for present of existing Managed Application Name %q (Resource Group %q): %+v", name, resourceGroupName, err)
@@ -357,20 +385,41 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		ManagedResourceGroupID: to.StringPtr(targetResourceGroupId),
 	}
 
-	parameters.Plan = &managedapplications.Plan{
-		Name:      to.StringPtr(planName),
-		Product:   to.StringPtr(product),
-		Publisher: to.StringPtr(publisher),
-		Version:   to.StringPtr(planVersion),
+	if v, ok := d.GetOk("plan"); ok && len(v.([]interface{})) > 0 {
+		parameters.Plan = expandPlan(v.([]interface{}))
+	} else {
+		parameters.Plan = &managedapplications.Plan{
+			Name:      to.StringPtr(defaultPlanName),
+			Product:   to.StringPtr(defaultPlanProduct),
+			Publisher: to.StringPtr(defaultPlanPublisher),
+			Version:   to.StringPtr(defaultPlanVersion),
+		}
 	}
 
-	params := make(map[string]interface{})
+	vnetName, vnetRGName, err := tfazurerm.ParseNameRGFromID(d.Get("virtual_network_id").(string), "virtualNetworks")
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	parameters.Parameters = make(map[string]interface{})
+	setAppParameter := func(key string, value interface{}) {
+		(parameters.Parameters.(map[string]interface{}))[key] = map[string]interface{}{"value": value}
+	}
 	for _, value := range azureParams {
 		valueStr := value.(string)
-		params[valueStr] = map[string]interface{}{"value": d.Get(templateToTFParam(valueStr, renamedAzureParams))}
+		if strings.HasSuffix(valueStr, "Vnet") {
+			setAppParameter(valueStr, vnetName)
+		} else if strings.HasSuffix(valueStr, "ResourceGroup") {
+			setAppParameter(valueStr, vnetRGName)
+		} else {
+			setAppParameter(valueStr, d.Get(templateToTFParam(valueStr, renamedAzureParams)))
+		}
 	}
 
 	approval := d.Get("jit_approval").([]interface{})[0].(map[string]interface{})
+	if approval["approvers"].([]interface{})[0] == nil {
+		return diag.Errorf("JIT group list cannot be empty.")
+	}
 	approver := approval["approvers"].([]interface{})[0].(map[string]interface{})
 	var approvers []managedapplications.JitApproverDefinition
 	displayNameList := convertToStringSlice(approver["groups"].([]interface{}))
@@ -399,10 +448,9 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	if v, ok := d.GetOk("alert_recipients"); ok {
 		newRecips := convertToStringSlice(v.([]interface{}))
-		params["alertRecipients"] = map[string]interface{}{"value": strings.Join(newRecips, ",")}
-
+		setAppParameter("alertRecipients", strings.Join(newRecips, ","))
 	} else { // Deployment template has validation check on 'alertRecipients'. If not set, it should be "" instead of null.
-		params["alertRecipients"] = map[string]interface{}{"value": ""}
+		setAppParameter("alertRecipients", "")
 	}
 
 	if v, ok := d.GetOk("tags"); ok {
@@ -411,17 +459,42 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		for _, tag := range templateTags {
 			tagsMap[tag] = tags
 		}
-		params["tagsByResource"] = map[string]interface{}{"value": tagsMap}
+		setAppParameter("tagsByResource", tagsMap)
 	}
 
-	parameters.Parameters = &params
+	err = prevalidateKeyVaultId(ctx, d, azureClient)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer func() {
+		if returnedDiags.HasError() {
+			vaultId, secretName := vaultIdSecretName(d)
+			azureClient.SecretDelete(ctx, vaultId, secretName)
+		}
+	}()
 
-	err := azureClient.appsCreateOrUpdate(ctx, resourceGroupName, name, parameters)
+	pvtKeyBytes, err := getSSHPrivateKeyBytes(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	resp, err := azureClient.appsGet(ctx, resourceGroupName, name)
+	sshPublicKey, err := auth.PrivateKeyDerivePublicKey(pvtKeyBytes)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	setAppParameter("pureuserPublicKey", string(sshPublicKey))
+
+	err = azureClient.AppsCreateOrUpdate(ctx, resourceGroupName, name, parameters)
+	defer func() {
+		if returnedDiags.HasError() {
+			azureClient.AppsDelete(ctx, resourceGroupName, name)
+		}
+	}()
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	resp, err := azureClient.AppsGet(ctx, resourceGroupName, name)
 	if err != nil {
 		return diag.Errorf("failed to retrieve Managed Application %q (Resource Group %q): %+v", name, resourceGroupName, err)
 	}
@@ -430,10 +503,20 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 	d.SetId(*resp.ID)
 
-	return resourceArrayAzureRead(ctx, d, m)
+	diags = resourceArrayAzureRead(ctx, d, m)
+	if diags.HasError() {
+		return diags
+	}
+
+	err = generateAndSetSecret(ctx, d, azureClient)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
 }
 func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	azureClient, diags := m.(*CbsService).AzureClientService()
+	azureClient, diags := m.(*CbsService).azureClientService()
 	if diags.HasError() {
 		return diags
 	}
@@ -448,7 +531,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 	managedResourceGroup := toManagedResourceGroup(appName)
 
 	resourceGroup := d.Get("resource_group_name").(string)
-	resp, err := azureClient.appsGet(ctx, resourceGroup, appName)
+	resp, err := azureClient.AppsGet(ctx, resourceGroup, appName)
 	if err != nil {
 		if responseWasNotFound(resp.Response) {
 			log.Printf("[WARN] Managed Application %q does not exist - removing from state", d.Id())
@@ -464,26 +547,43 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 	d.Set("location", resp.Location)
 
 	if props := resp.ApplicationProperties; props != nil {
-		params := props.Parameters.(map[string]interface{})
+		params := formatParameters(props.Parameters)
 		azureParamSet := mapset.NewSetFromSlice(azureParams)
+		var vnetName, vnetRGName string
 		for k, v := range params {
-			if v != nil {
+			// SecureString parameters will always have a null value, so ignore them
+			if v.valType != "SecureString" {
 				if k == "AlertRecipients" {
-					recips := strings.Split(v.(map[string]interface{})["value"].(string), ",")
+					recips := strings.Split(v.value.(string), ",")
 					d.Set("alert_recipients", recips)
 				}
 				if k == "tagsByResource" {
-					maps := v.(map[string]interface{})["value"].(map[string]interface{})
+					maps := v.value.(map[string]interface{})
 					for _, tagValue := range maps {
 						d.Set("tags", tagValue)
 						break
 					}
 				}
 				if azureParamSet.Contains(k) {
-					d.Set(templateToTFParam(k, renamedAzureParams), v.(map[string]interface{})["value"])
+					if strings.HasSuffix(k, "Vnet") {
+						vnetName = v.value.(string)
+					} else if strings.HasSuffix(k, "ResourceGroup") {
+						vnetRGName = v.value.(string)
+					} else {
+						d.Set(templateToTFParam(k, renamedAzureParams), v.value)
+					}
+
 				}
 			}
 		}
+
+		// set virtual_network_id using VirtualNetwork Name and ResourceGroup name
+		if vnetName == "" || vnetRGName == "" {
+			return diag.Errorf("failed to read VirtualNetwork ID of Managed Application %q", appName)
+		}
+		vnetId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s",
+			azureClient.SubscriptionID(), vnetRGName, vnetName)
+		d.Set("virtual_network_id", vnetId)
 
 		if err = d.Set("jit_approval", flattenJitApproval(props.JitAccessPolicy)); err != nil {
 			return diag.FromErr(err)
@@ -521,17 +621,36 @@ func resourceArrayAzureUpdate(ctx context.Context, d *schema.ResourceData, m int
 }
 
 func resourceArrayAzureDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	azureClient, diags := m.(*CbsService).AzureClientService()
+	azureClient, diags := m.(*CbsService).azureClientService()
 	if diags.HasError() {
 		return diags
 	}
 
+	vaultId, secretName := vaultIdSecretName(d)
+
+	faClient, err := azureClient.NewFAClient(d.Get("management_endpoint").(string), vaultId, secretName)
+	if err != nil {
+		return diag.Errorf("failed to create FA client with managed application ID: %s. "+
+			"Please contact Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
+	}
+
+	if err := faClient.Deactivate(); err != nil {
+		return diag.Errorf("failed to deactivate the instance with Id %s. Please contact "+
+			"Pure Storage support: %+v.", d.Id(), err)
+	}
+
+	azureClient.DeactivateWait()
+
 	resourceGroup := d.Get("resource_group_name").(string)
 	appName := d.Get("array_name").(string)
-	err := azureClient.appsDelete(ctx, resourceGroup, appName)
+
+	err = azureClient.AppsDelete(ctx, resourceGroup, appName)
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
+	azureClient.SecretDelete(ctx, vaultId, secretName)
+
 	return nil
 }
 
@@ -539,7 +658,7 @@ func validateManagedApplicationName(v interface{}, k string) (warnings []string,
 	value := v.(string)
 
 	if !regexp.MustCompile(`^[-\da-zA-Z]{3,64}$`).MatchString(value) {
-		errors = append(errors, fmt.Errorf("%q must be between 3 and 64 characters in length and contains only letters, numbers or hyphens.", k))
+		errors = append(errors, fmt.Errorf("%q must be between 3 and 64 characters in length and contains only letters, numbers or hyphens", k))
 	}
 
 	return warnings, errors
@@ -564,6 +683,16 @@ func validateResourceGroupName(v interface{}, k string) (warnings []string, erro
 	return warnings, errors
 }
 
+func validateKeyVaultId(v interface{}, k string) (warnings []string, errors []error) {
+
+	_, _, err := tfazurerm.ParseNameRGFromID(v.(string), "vaults")
+	if err != nil {
+		errors = append(errors, err)
+	}
+
+	return
+}
+
 func responseWasNotFound(resp autorest.Response) bool {
 	if r := resp.Response; r != nil {
 		if r.StatusCode == http.StatusNotFound {
@@ -579,11 +708,11 @@ func toManagedResourceGroup(name string) string {
 	return result
 }
 
-func groupGetByDisplayName(ctx context.Context, client AzureClientAPI, displayName string) (*graphrbac.ADGroup, error) {
+func groupGetByDisplayName(ctx context.Context, client cloud.AzureClientAPI, displayName string) (*graphrbac.ADGroup, error) {
 
 	filter := fmt.Sprintf("displayName eq '%s'", displayName)
 
-	values, err := client.groupsListComplete(ctx, filter)
+	values, err := client.GroupsListComplete(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("listing Groups for filter %q: %+v", filter, err)
 	}
@@ -608,6 +737,17 @@ func groupGetByDisplayName(ctx context.Context, client AzureClientAPI, displayNa
 	return &group, nil
 }
 
+func expandPlan(input []interface{}) *managedapplications.Plan {
+	plan := input[0].(map[string]interface{})
+
+	return &managedapplications.Plan{
+		Name:      to.StringPtr(plan["name"].(string)),
+		Product:   to.StringPtr(plan["product"].(string)),
+		Publisher: to.StringPtr(plan["publisher"].(string)),
+		Version:   to.StringPtr(plan["version"].(string)),
+	}
+}
+
 func flattenJitApproval(policy *managedapplications.ApplicationJitAccessPolicy) []map[string]interface{} {
 	results := make([]map[string]interface{}, 1)
 
@@ -625,4 +765,85 @@ func flattenJitApproval(policy *managedapplications.ApplicationJitAccessPolicy) 
 	results[0] = result
 
 	return results
+}
+
+var invalidSecretCharacters = regexp.MustCompile("[^a-zA-Z0-9-]+")
+
+func vaultIdSecretName(d *schema.ResourceData) (vaultId string, secretName string) {
+	secretName = fmt.Sprintf("cbs-%s-%s", d.Get("resource_group_name").(string), d.Get("array_name").(string))
+	secretName = invalidSecretCharacters.ReplaceAllString(secretName, "")
+	vaultId = d.Get("key_vault_id").(string)
+	return
+}
+
+// Here we just write/read from the secret, just to make sure that we have a properly configured key_vault_id
+func prevalidateKeyVaultId(ctx context.Context, d *schema.ResourceData, azureClient cloud.AzureClientAPI) error {
+	vaultId, secretName := vaultIdSecretName(d)
+	const placeholderText = "PLACEHOLDER"
+
+	existing, err := azureClient.SecretGet(ctx, vaultId, secretName, "")
+	if !(utils.ResponseWasNotFound(existing.Response) || (err != nil && *existing.Value == placeholderText)) {
+		if err != nil {
+			return fmt.Errorf("failed to check for existing secret: %+v Secret name: %s key_vault_id: %s", err, secretName, vaultId)
+		} else {
+			return fmt.Errorf("secret already exists, please check for existing deployment, or change resource group or name. Secret name: %s key_vault_id: %s", secretName, vaultId)
+		}
+	}
+
+	setSecret, err := azureClient.SecretSet(ctx, vaultId, secretName, vaultSecret.SecretSetParameters{Value: to.StringPtr(placeholderText)})
+	if utils.ResponseWasStatusCode(setSecret.Response, 409 /* Conflict: Deleted but not purged */) {
+		err = azureClient.SecretRecover(ctx, vaultId, secretName)
+		if err != nil {
+			return fmt.Errorf("failed to recover previously deleted secret: %+v Secret name: %s key_vault_id: %s", err, secretName, vaultId)
+		}
+		for {
+			setSecret, err = azureClient.SecretSet(ctx, vaultId, secretName, vaultSecret.SecretSetParameters{Value: to.StringPtr(placeholderText)})
+			if !utils.ResponseWasStatusCode(setSecret.Response, 409) {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "[WARN] An existing deleted secret exists, we are recovering it so that we may overwrite it: %+v\n", err)
+			time.Sleep(10 * time.Second)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("prevalidation failure: Please check value for: %+v Secret name: %s key_vault_id: %s", err, secretName, vaultId)
+	}
+
+	secret, err := azureClient.SecretGet(ctx, vaultId, secretName, "")
+	if err != nil {
+		return fmt.Errorf("failed to get secret: %+v Secret name: %s key_vault_id: %s", err, secretName, vaultId)
+	}
+	if *secret.Value != placeholderText {
+		return fmt.Errorf("secret did not match secret that we set Secret name: %s key_vault_id: %s", secretName, vaultId)
+	}
+	return nil
+}
+
+func generateAndSetSecret(ctx context.Context, d *schema.ResourceData, azureClient cloud.AzureClientAPI) error {
+	vaultId, secretName := vaultIdSecretName(d)
+
+	restCredentials, err := generateSecretPayload(d)
+	if err != nil {
+		return err
+	}
+
+	_, err = azureClient.SecretSet(ctx, vaultId, secretName, vaultSecret.SecretSetParameters{Value: to.StringPtr((string(restCredentials)))})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func formatParameters(val interface{}) map[string]azureParameterValue {
+	rawParams := val.(map[string]interface{})
+	params := make(map[string]azureParameterValue)
+	for k, v := range rawParams {
+		if v != nil {
+			params[k] = azureParameterValue{
+				valType: v.(map[string]interface{})["type"].(string),
+				value:   v.(map[string]interface{})["value"],
+			}
+		}
+	}
+	return params
 }

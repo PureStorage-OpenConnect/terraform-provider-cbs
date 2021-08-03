@@ -19,51 +19,40 @@
 package cbs
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-07-01/managedapplications"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/cloudformation"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 )
 
-type cloudformationAPI interface {
-	CreateStack(input *cloudformation.CreateStackInput) (*cloudformation.CreateStackOutput, error)
-	DescribeStacks(input *cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
-	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
-	WaitUntilStackCreateCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput, opts ...request.WaiterOption) error
-	WaitUntilStackDeleteCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput, opts ...request.WaiterOption) error
-}
-
 type CbsService struct {
-	CloudFormation cloudformationAPI
-	AzureClient    AzureClientAPI
-	awsRegionStr   string
-	azureConfig    azureUserConfig
+	AWSClient    cloud.AWSClientAPI
+	AzureClient  cloud.AzureClientAPI
+	awsRegionStr string
+	azureConfig  cloud.AzureConfig
 }
 
-func (m *CbsService) CloudFormationService() (cloudformationAPI, diag.Diagnostics) {
-	if m.CloudFormation == nil {
-		cftSvc, diags := buildAWSSession(m.awsRegionStr)
-		if diags.HasError() {
+func (m *CbsService) awsClientService() (cloud.AWSClientAPI, diag.Diagnostics) {
+	if m.AWSClient == nil {
+		diags := buildAWSClientPreCheck(m.awsRegionStr)
+		if diags != nil {
 			return nil, diags
 		}
-		m.CloudFormation = cftSvc
+		awsClient, err := cloud.NewAWSClient(m.awsRegionStr)
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+		m.AWSClient = awsClient
 	}
 
-	return m.CloudFormation, nil
+	return m.AWSClient, nil
 }
 
-func (m *CbsService) AzureClientService() (AzureClientAPI, diag.Diagnostics) {
+func (m *CbsService) azureClientService() (cloud.AzureClientAPI, diag.Diagnostics) {
 	if m.AzureClient == nil {
-		azureClient, diags := buildAzureClient(m.azureConfig)
-		if diags.HasError() {
-			return nil, diags
+		azureClient, err := cloud.NewAzureClient(m.azureConfig)
+		if err != nil {
+			return nil, diag.FromErr(err)
 		}
 		m.AzureClient = azureClient
 	}
@@ -71,7 +60,7 @@ func (m *CbsService) AzureClientService() (AzureClientAPI, diag.Diagnostics) {
 	return m.AzureClient, nil
 }
 
-func buildAWSSessionPreCheck(region string) diag.Diagnostics {
+func buildAWSClientPreCheck(region string) diag.Diagnostics {
 	var diags diag.Diagnostics
 	if region == "" {
 		diags = append(diags, diag.Diagnostic{
@@ -82,17 +71,4 @@ func buildAWSSessionPreCheck(region string) diag.Diagnostics {
 		return diags
 	}
 	return nil
-}
-
-type AzureClientAPI interface {
-	SubscriptionID() string
-	groupsListComplete(ctx context.Context, filter string) (*[]graphrbac.ADGroup, error)
-	appsCreateOrUpdate(ctx context.Context, resourceGroupName string, applicationName string, parameters managedapplications.Application) error
-	appsGet(ctx context.Context, resourceGroupName string, applicationName string) (managedapplications.Application, error)
-	appsDelete(ctx context.Context, resourceGroupName string, applicationName string) error
-}
-
-type AzureClient struct {
-	ApplicationsClient *managedapplications.ApplicationsClient
-	GroupsClient       *graphrbac.GroupsClient
 }

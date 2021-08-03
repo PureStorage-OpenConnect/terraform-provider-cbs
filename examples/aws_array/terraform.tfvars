@@ -8,6 +8,7 @@ alert_recipients        = ["admin1@example-company.org", "admin2@example-company
 purity_instance_type    = "V10AR1"
 license_key             = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx"
 key_name                = "cbs-key"
+key_file_path           = "path/to/cbs-key"
 rep_security_group      = "sg-xxxx"
 iscsi_security_group    = "sg-xxxx"
 mgmt_security_group     = "sg-xxxx"

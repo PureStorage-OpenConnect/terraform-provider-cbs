@@ -9,15 +9,12 @@ https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Bloc
 	"resource_group_name": "resource_xxxx",
 	"location": "location_xxxx"
 	"license_key": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx",
-	"pureuser_public_key": "cbs_key",
 	"management_subnet": "SN-xxxxxxxxxxxxxx",
 	"iscsi_subnet": "SN-xxxxxxxxxxxxxx",
 	"replication_subnet": "SN-xxxxxxxxxxxxxx",
+	"pureuser_private_key_path":"/path/to/cbs_key",
 	"system_subnet": "SN-xxxxxxxxxxxxxx",
-	"virtual_network": "VN-xxxxxxxxxxxxxx",
-	"management_resource_group": "management_resource_xxxx",
-	"iscsi_resource_group": "iscsi_resource_xxxx",
-	"replication_resource_group": "replication_resource_xxxx",
-	"system_resource_group": "system_resource_xxxx",
+	"virtual_network_id": "/subscriptions/xxxxxxxxxxxxxx/resourceGroups/xxxxxxxxxxxxxx/providers/Microsoft.Network/virtualNetworks/xxxxxxxxxxxxxx",
+	"key_vault_id": "/subscriptions/xxxxxxxxxxxxxx/resourceGroups/xxxxxxxxxxxxxx/providers/Microsoft.KeyVault/vaults/xxxxxxxxxxxxxx",
 	"jit_group": "group_xxxx"
 }
