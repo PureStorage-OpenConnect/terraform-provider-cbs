@@ -116,7 +116,7 @@ func configureProvider(ctx context.Context, d *schema.ResourceData) (interface{}
 	cbsService.azureConfig = azureMakeConfig(d)
 
 	if _, ok := d.GetOk("azure"); ok {
-		azureClient, err := cloud.NewAzureClient(cbsService.azureConfig)
+		azureClient, err := cloud.NewAzureClient(ctx, cbsService.azureConfig)
 		if err != nil {
 			return nil, diag.FromErr(err)
 		}

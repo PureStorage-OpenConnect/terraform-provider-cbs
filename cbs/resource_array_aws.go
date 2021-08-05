@@ -29,6 +29,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
 
@@ -200,7 +201,7 @@ func resourceArrayAWS() *schema.Resource {
 			// timeouts trigger first.
 			Create: schema.DefaultTimeout(130 * time.Minute),
 			Read:   schema.DefaultTimeout(5 * time.Minute),
-			Delete: schema.DefaultTimeout(20 * time.Minute),
+			Delete: schema.DefaultTimeout(40 * time.Minute),
 		},
 	}
 }
@@ -216,6 +217,36 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 	templateURL := d.Get("deployment_template_url").(string)
 
 	var params []*cloudformation.Parameter
+
+	// From 6.3.5 the AvailabilityZone parameter is required for the CFT. This parameter can be computed
+	// on the fly so users does not have to provide it. In order to backward compatibility with older CBS
+	// releases we want to pass AZ only if the template requires it.
+	template, err := awsClient.ValidateTemplate(&cloudformation.ValidateTemplateInput{
+		TemplateURL: aws.String(templateURL),
+	})
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	for _, templateParam := range template.Parameters {
+		// Only calculate and pass the AvailabilityZone parameter if required by the CFT
+		if *templateParam.ParameterKey == "AvailabilityZone" {
+			// Derive the availability_zone from the provided subnet parameter
+			// All of the subnet ids provided by users must be from the same AZ so we picked system_subnet
+			subnets, subnetErr := awsClient.DescribeSubnets(&ec2.DescribeSubnetsInput{
+				SubnetIds: aws.StringSlice([]string{d.Get("system_subnet").(string)}),
+			})
+			if subnetErr != nil {
+				return diag.FromErr(subnetErr)
+			}
+
+			params = append(params, &cloudformation.Parameter{
+				ParameterKey:   aws.String("AvailabilityZone"),
+				ParameterValue: subnets.Subnets[0].AvailabilityZone,
+			})
+			break
+		}
+	}
 
 	if v, ok := d.GetOk("alert_recipients"); ok {
 		recips := convertToStringSlice(v.([]interface{}))
@@ -263,9 +294,9 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 		Parameters:      params,
 	}
 
-	output, err := awsClient.CreateStack(input)
-	if err != nil {
-		return diag.FromErr(err)
+	output, stackErr := awsClient.CreateStack(input)
+	if stackErr != nil {
+		return diag.FromErr(stackErr)
 	}
 
 	d.SetId(*output.StackId)
@@ -291,7 +322,7 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 
 		// Bootstrap the array
-		credentials, err := generateSecretPayload(d)
+		credentials, err := generateSecretPayload(ctx, d)
 		if err != nil {
 			return diag.Errorf("failed to bootstrap the CloudFormation stack with Id %s. Please contact "+
 				"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)

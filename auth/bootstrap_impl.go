@@ -1,3 +1,5 @@
+//go:build !mock
+
 /*
 
 	Copyright 2021, Pure Storage Inc.
@@ -20,14 +22,12 @@ package auth
 
 import "context"
 
-type Bootstrapper interface {
-	GenerateSecretPayload(ctx context.Context, host string, pureuserPrivateKey []byte) ([]byte, error)
+func (b *bootstrapService) GenerateSecretPayload(ctx context.Context, host string, pureuserPrivateKey []byte) ([]byte, error) {
+	return generateSecretPayloadReal(ctx, host, pureuserPrivateKey)
 }
 
-type SecretPayload struct {
-	UserName       string `json:"user_name"`
-	Issuer         string `json:"issuer"`
-	ClientID       string `json:"client_id"`
-	KeyID          string `json:"key_id"`
-	RestPrivateKey string `json:"rest_private_key"`
+type bootstrapService struct{}
+
+func NewBootstrapService() Bootstrapper {
+	return &bootstrapService{}
 }

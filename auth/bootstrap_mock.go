@@ -1,4 +1,4 @@
-// +build mock
+//go:build mock
 
 /*
 
@@ -25,6 +25,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 )
 
@@ -34,7 +35,7 @@ func NewBootstrapService() Bootstrapper {
 
 type mockBootstrapService struct{}
 
-func (b *mockBootstrapService) GenerateSecretPayload(host string, pureuserPrivateKey []byte) ([]byte, error) {
+func (b *mockBootstrapService) GenerateSecretPayload(ctx context.Context, host string, pureuserPrivateKey []byte) ([]byte, error) {
 	mockPayload := SecretPayload{
 		UserName:       "mockUser",
 		Issuer:         "mockIssuer",

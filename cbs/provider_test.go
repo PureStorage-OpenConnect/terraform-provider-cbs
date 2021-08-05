@@ -19,6 +19,7 @@
 package cbs
 
 import (
+	"context"
 	"os"
 	"regexp"
 	"testing"
@@ -184,7 +185,7 @@ func TestAccProvider_azureCLIAuth(t *testing.T) {
 	}
 
 	// Support only Azure CLI authentication
-	_, err := cloud.NewAzureClient(cloud.AzureConfig{})
+	_, err := cloud.NewAzureClient(context.TODO(), cloud.AzureConfig{})
 	if err != nil {
 		t.Fatalf("err: %+v", err)
 	}
@@ -196,7 +197,7 @@ func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
 	}
 
 	// Support only Service Principal authentication
-	testAccAzureConfigPreCheck(t)
+	testAccAzureServicePrincipalEnvCheck(t)
 
 	config := cloud.AzureConfig{
 		SubscriptionID: os.Getenv(azureSubscriptionID),
@@ -205,13 +206,13 @@ func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
 		TenantID:       os.Getenv(azureTenantID),
 	}
 
-	_, err := cloud.NewAzureClient(config)
+	_, err := cloud.NewAzureClient(context.TODO(), config)
 	if err != nil {
 		t.Fatalf("err: %+v", err)
 	}
 }
 
-func testAccAzureConfigPreCheck(t *testing.T) {
+func testAccAzureServicePrincipalEnvCheck(t *testing.T) {
 	variables := []string{
 		azureSubscriptionID,
 		azureClientID,
@@ -229,7 +230,6 @@ func testAccAzureConfigPreCheck(t *testing.T) {
 
 func testAccCBSPreCheck(t *testing.T) {
 	testAccUnsetAWSPreCheck(t)
-	testAccAzureConfigPreCheck(t)
 }
 
 func TestProvider_HasExpectedResources(t *testing.T) {

@@ -32,8 +32,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 var mockDb *sql.DB
@@ -106,12 +107,21 @@ func fromBytesRow(value interface{}, stmt *sql.Stmt, queryParameters ...interfac
 	row := stmt.QueryRow(queryParameters...)
 	var _bytes []uint8
 
+retry:
 	err := row.Scan(&_bytes)
 	if err == sql.ErrNoRows {
 		return err
 	}
 	if err != nil {
 		fmt.Printf("%#v\n", err)
+
+		if sqliteErr, ok := err.(sqlite3.Error); ok {
+			if sqliteErr.Code == sqlite3.ErrBusy {
+				fmt.Println("Sqlite database locked, will retry")
+				time.Sleep(100 * time.Millisecond)
+				goto retry
+			}
+		}
 		panic(err)
 	}
 	blob := bytes.NewBuffer(_bytes)

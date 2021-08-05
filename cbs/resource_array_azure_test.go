@@ -34,6 +34,10 @@ import (
 )
 
 type cbsAzureParams struct {
+	PlanName               string `json:"plan_name"`
+	PlanProduct            string `json:"plan_product"`
+	PlanPublisher          string `json:"plan_publisher"`
+	PlanVersion            string `json:"plan_version"`
 	ResourceGroupName      string `json:"resource_group_name"`
 	Location               string `json:"location"`
 	LicenseKey             string `json:"license_key"`
@@ -45,6 +49,7 @@ type cbsAzureParams struct {
 	SystemSubnet           string `json:"system_subnet"`
 	VirtualNetworkId       string `json:"virtual_network_id"`
 	JitGroup               string `json:"jit_group"`
+	JitGroupID             string `json:"jit_group_id"`
 }
 
 const azureParamsPathVar = "TEST_ACC_AZURE_PARAMS_PATH"
@@ -61,19 +66,18 @@ func TestAccArrayAzure_basic(t *testing.T) {
 	loadAccAzureParams(t)
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { testAccAzureConfigPreCheck(t) },
 		ProviderFactories: testAccProvidersFactory,
 		CheckDestroy:      testAccCheckArrayAzureDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAzureBasicConfig(arrayName, orgDomain),
+				Config: testAccAzureConfig(arrayName, orgDomain, false),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
 					testAccCheckAzureAllAttrs(resourceName, arrayName, orgDomain),
 				),
 			},
 			{
-				Config:      testAccAzureBasicConfig(arrayName, orgDomain2),
+				Config:      testAccAzureConfig(arrayName, orgDomain2, false),
 				ExpectError: regexp.MustCompile("Updates are not supported."),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
@@ -84,9 +88,48 @@ func TestAccArrayAzure_basic(t *testing.T) {
 	})
 }
 
-func testAccAzureBasicConfig(name string, orgDomain string) string {
+func testAccAzureConfig(name string, orgDomain string, oldJit bool) string {
+	planHCL := ""
+	if cbsAzureParam.PlanName != "" ||
+		cbsAzureParam.PlanProduct != "" ||
+		cbsAzureParam.PlanPublisher != "" ||
+		cbsAzureParam.PlanVersion != "" {
+		planHCL = fmt.Sprintf(`
+		plan {
+			name = "%s"
+			product = "%s"
+			publisher = "%s"
+			version = "%s"
+		}
+		`,
+			cbsAzureParam.PlanName,
+			cbsAzureParam.PlanProduct,
+			cbsAzureParam.PlanPublisher,
+			cbsAzureParam.PlanVersion,
+		)
+	}
+
+	jitHCL := fmt.Sprintf(`
+		jit_approval_group_object_ids = [
+				"%s",
+		]
+	`, cbsAzureParam.JitGroupID)
+	if oldJit {
+		jitHCL = fmt.Sprintf(`
+			jit_approval {
+				activation_maximum_duration = "PT8H"
+				approvers {
+					groups = [
+						"%s",
+					]
+				}
+			}
+		`, cbsAzureParam.JitGroup)
+	}
+
 	return fmt.Sprintf(`
 	resource "cbs_array_azure" "test_array_azure" {
+		%[14]s
 		array_name = "%[1]s"
 		log_sender_domain = "%[2]s"
 		resource_group_name = "%[3]s"
@@ -104,14 +147,7 @@ func testAccAzureBasicConfig(name string, orgDomain string) string {
 		array_model = "V10MUR1"
 		zone = 3
 
-		jit_approval {
-			activation_maximum_duration = "PT2H"
-			approvers {
-				groups = [
-					"%[13]s",
-				]
-			}
-		}
+		%[13]s
 
 		tags = {
 			foo = "bar"
@@ -119,7 +155,7 @@ func testAccAzureBasicConfig(name string, orgDomain string) string {
 		}
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.JitGroup)
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, jitHCL, planHCL)
 }
 
 // Lazy load the Azure param values from the json file specified at TEST_ACC_AZURE_PARAMS_PATH.
@@ -140,7 +176,7 @@ func loadAccAzureParams(t *testing.T) {
 }
 
 func testAccCheckArrayAzureDestroy(s *terraform.State) error {
-	azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService()
+	azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService(context.TODO())
 	if diags.HasError() {
 		return fmt.Errorf("err: %+v", diags)
 	}
@@ -174,7 +210,7 @@ func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
 		}
 
 		ctx := context.Background()
-		azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService()
+		azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService(context.TODO())
 		if diags.HasError() {
 			return fmt.Errorf("err: %+v", diags)
 		}
@@ -210,9 +246,45 @@ func testAccCheckAzureAllAttrs(resourceName string, arrayName string, orgDomain 
 		resource.TestCheckResourceAttr(resourceName, "management_subnet", cbsAzureParam.ManagementSubnet),
 		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
 		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
+		resource.TestCheckResourceAttr(resourceName, "jit_approval_group_object_ids.#", "1"),
+		resource.TestCheckResourceAttr(resourceName, "jit_approval_group_object_ids.0", cbsAzureParam.JitGroupID),
+		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
+		resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
+		resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
+		resource.TestCheckResourceAttrSet(resourceName, "application_name"),
+		resource.TestCheckResourceAttrSet(resourceName, "managed_resource_group_name"),
+		resource.TestCheckResourceAttrSet(resourceName, "ct0_name"),
+		resource.TestCheckResourceAttrSet(resourceName, "ct1_name"),
+		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint"),
+		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint_ct0"),
+		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint_ct1"),
+		resource.TestCheckResourceAttrSet(resourceName, "replication_endpoint_ct0"),
+		resource.TestCheckResourceAttrSet(resourceName, "replication_endpoint_ct1"),
+		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct0"),
+		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct1"),
+	)
+}
+
+func testAccCheckAzureBasicOldJitApprovalAttrs(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
+	return resource.ComposeAggregateTestCheckFunc(
+		resource.TestCheckResourceAttr(resourceName, "array_name", arrayName),
+		resource.TestCheckResourceAttr(resourceName, "location", cbsAzureParam.Location),
+		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
+		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
+		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
+		resource.TestCheckResourceAttr(resourceName, "alert_recipients.#", "1"),
+		resource.TestCheckResourceAttr(resourceName, "alert_recipients.0", "user@example.com"),
+		resource.TestCheckResourceAttr(resourceName, "array_model", "V10MUR1"),
+		resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", cbsAzureParam.PureuserPrivateKeyPath),
+		resource.TestCheckResourceAttr(resourceName, "system_subnet", cbsAzureParam.SystemSubnet),
+		resource.TestCheckResourceAttr(resourceName, "replication_subnet", cbsAzureParam.ReplicationSubnet),
+		resource.TestCheckResourceAttr(resourceName, "iscsi_subnet", cbsAzureParam.ISCSISubnet),
+		resource.TestCheckResourceAttr(resourceName, "management_subnet", cbsAzureParam.ManagementSubnet),
+		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
+		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.#", "1"),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.activation_maximum_duration", "PT2H"),
+		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.activation_maximum_duration", "PT8H"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.0.groups.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.0.groups.0", cbsAzureParam.JitGroup),
 		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
@@ -230,4 +302,35 @@ func testAccCheckAzureAllAttrs(resourceName string, arrayName string, orgDomain 
 		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct0"),
 		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct1"),
 	)
+}
+
+func TestAccArrayAzure_OldJitApproval(t *testing.T) {
+
+	arrayName := acctest.RandomWithPrefix("tf-test-array-azure")
+	resourceName := "cbs_array_azure.test_array_azure"
+	orgDomain := "example.com"
+	orgDomain2 := "example-invalid-update.com"
+	loadAccAzureParams(t)
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      testAccCheckArrayAzureDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureConfig(arrayName, orgDomain, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureBasicOldJitApprovalAttrs(resourceName, arrayName, orgDomain),
+				),
+			},
+			{
+				Config:      testAccAzureConfig(arrayName, orgDomain2, true),
+				ExpectError: regexp.MustCompile("Updates are not supported."),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureBasicOldJitApprovalAttrs(resourceName, arrayName, orgDomain),
+				),
+			},
+		},
+	})
 }

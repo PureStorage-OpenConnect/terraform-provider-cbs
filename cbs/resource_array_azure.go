@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	mapset "github.com/deckarep/golang-set"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -49,10 +50,10 @@ const kind = "MarketPlace"
 
 // Default managed application plan
 const (
-	defaultPlanName      = "cbs_azure_6_1_8"
+	defaultPlanName      = "cbs_azure_6_3_5"
 	defaultPlanProduct   = "pure_storage_cloud_block_store_deployment"
 	defaultPlanPublisher = "purestoragemarketplaceadmin"
-	defaultPlanVersion   = "1.0.3"
+	defaultPlanVersion   = "1.0.0"
 )
 
 var templateTags = []string{
@@ -218,10 +219,25 @@ func resourceArrayAzure() *schema.Resource {
 				}),
 			},
 
+			"jit_approval_group_object_ids": {
+				Description:  "This is a list of Azure group object IDs for people who are allowed to approve JIT requests",
+				Optional:     true, // Optional for now, make it required in the future
+				Computed:     true,
+				ExactlyOneOf: []string{"jit_approval_group_object_ids", "jit_approval"},
+				Type:         schema.TypeList,
+				Elem: &schema.Schema{
+					Type:         schema.TypeString,
+					ValidateFunc: validation.IsUUID,
+				},
+			},
+
 			"jit_approval": {
-				Type:     schema.TypeList,
-				Required: true,
-				MaxItems: 1,
+				Type:         schema.TypeList,
+				Optional:     true,
+				Computed:     true,
+				MaxItems:     1,
+				Deprecated:   "please convert your config to use the jit_approval_group_object_ids parameter instead.  The old interface will be removed in the future",
+				ExactlyOneOf: []string{"jit_approval_group_object_ids", "jit_approval"},
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"activation_maximum_duration": {
@@ -354,7 +370,8 @@ func resourceArrayAzure() *schema.Resource {
 }
 
 func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m interface{}) (returnedDiags diag.Diagnostics) {
-	azureClient, diags := m.(*CbsService).azureClientService()
+	tflog.Trace(ctx, "resourceArrayAzureCreate")
+	azureClient, diags := m.(*CbsService).azureClientService(ctx)
 	if diags.HasError() {
 		return diags
 	}
@@ -416,34 +433,60 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		}
 	}
 
-	approval := d.Get("jit_approval").([]interface{})[0].(map[string]interface{})
-	if approval["approvers"].([]interface{})[0] == nil {
-		return diag.Errorf("JIT group list cannot be empty.")
-	}
-	approver := approval["approvers"].([]interface{})[0].(map[string]interface{})
-	var approvers []managedapplications.JitApproverDefinition
-	displayNameList := convertToStringSlice(approver["groups"].([]interface{}))
-	for _, displayName := range displayNameList {
-		group, err := groupGetByDisplayName(ctx, azureClient, displayName)
-		if err != nil {
-			return diag.Errorf("No group found matching specified name %q: %+v", displayName, err)
-		}
-		if group.ObjectID == nil {
-			return diag.Errorf("Group returned with nil object ID: %+v", err)
-		}
-		newApprover := managedapplications.JitApproverDefinition{
-			DisplayName: to.StringPtr(displayName),
-			ID:          group.ObjectID,
-			Type:        managedapplications.Group,
-		}
-		approvers = append(approvers, newApprover)
-	}
+	{
 
-	parameters.ApplicationProperties.JitAccessPolicy = &managedapplications.ApplicationJitAccessPolicy{
-		JitAccessEnabled:         to.BoolPtr(true),
-		JitApprovalMode:          managedapplications.JitApprovalModeManualApprove,
-		MaximumJitAccessDuration: to.StringPtr(approval["activation_maximum_duration"].(string)),
-		JitApprovers:             &approvers,
+		var approvers []managedapplications.JitApproverDefinition
+		var activationMaximumDuration string
+
+		// This handles Jit groups specified by object ids
+
+		if objectIds, ok := d.GetOk("jit_approval_group_object_ids"); ok {
+			ids := convertToStringSlice(objectIds.([]interface{}))
+			if len(ids) == 0 {
+				returnedDiags = append(returnedDiags, diag.Errorf("jit_approval_group_object_ids must not be empty")...)
+			}
+			for _, id := range ids {
+				approvers = append(approvers, managedapplications.JitApproverDefinition{
+					ID:   to.StringPtr(id),
+					Type: managedapplications.Group,
+				})
+			}
+			// If using new jit_approval scheme we want to use the longest possible activation
+			activationMaximumDuration = "PT8H"
+		}
+
+		// This handles Jit Groups specified by name (Deprecated feature, to be removed in future major version bump)
+		if oldApproval, ok := d.GetOk("jit_approval"); ok {
+			approval := oldApproval.([]interface{})[0].(map[string]interface{})
+			if approval["approvers"].([]interface{})[0] == nil {
+				return diag.Errorf("JIT group list cannot be empty.")
+			}
+			approver := approval["approvers"].([]interface{})[0].(map[string]interface{})
+			displayNameList := convertToStringSlice(approver["groups"].([]interface{}))
+			for _, displayName := range displayNameList {
+				group, err := groupGetByDisplayName(ctx, azureClient, displayName)
+				if err != nil {
+					return diag.Errorf("No group found matching specified name %q: %+v", displayName, err)
+				}
+				if group.ObjectID == nil {
+					return diag.Errorf("Group returned with nil object ID: %+v", err)
+				}
+				newApprover := managedapplications.JitApproverDefinition{
+					DisplayName: to.StringPtr(displayName),
+					ID:          group.ObjectID,
+					Type:        managedapplications.Group,
+				}
+				approvers = append(approvers, newApprover)
+			}
+			activationMaximumDuration = approval["activation_maximum_duration"].(string)
+		}
+
+		parameters.ApplicationProperties.JitAccessPolicy = &managedapplications.ApplicationJitAccessPolicy{
+			JitAccessEnabled:         to.BoolPtr(true),
+			JitApprovalMode:          managedapplications.JitApprovalModeManualApprove,
+			MaximumJitAccessDuration: to.StringPtr(activationMaximumDuration),
+			JitApprovers:             &approvers,
+		}
 	}
 
 	if v, ok := d.GetOk("alert_recipients"); ok {
@@ -483,7 +526,12 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		return diag.FromErr(err)
 	}
 	setAppParameter("pureuserPublicKey", string(sshPublicKey))
+	// Error out now, before we create resources
+	if returnedDiags.HasError() {
+		return returnedDiags
+	}
 
+	tflog.Trace(ctx, "resourceArrayAzureCreate AppsCreateOrUpdate")
 	err = azureClient.AppsCreateOrUpdate(ctx, resourceGroupName, name, parameters)
 	defer func() {
 		if returnedDiags.HasError() {
@@ -513,10 +561,11 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		return diag.FromErr(err)
 	}
 
-	return nil
+	return returnedDiags
 }
 func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	azureClient, diags := m.(*CbsService).azureClientService()
+	tflog.Trace(ctx, "resourceArrayAzureRead")
+	azureClient, diags := m.(*CbsService).azureClientService(ctx)
 	if diags.HasError() {
 		return diags
 	}
@@ -585,7 +634,10 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 			azureClient.SubscriptionID(), vnetRGName, vnetName)
 		d.Set("virtual_network_id", vnetId)
 
-		if err = d.Set("jit_approval", flattenJitApproval(props.JitAccessPolicy)); err != nil {
+		if err := d.Set("jit_approval", flattenJitApproval(props.JitAccessPolicy)); err != nil {
+			return diag.FromErr(err)
+		}
+		if err := d.Set("jit_approval_group_object_ids", flattenJitApprovalGroupIds(props.JitAccessPolicy)); err != nil {
 			return diag.FromErr(err)
 		}
 
@@ -613,6 +665,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 }
 
 func resourceArrayAzureUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	tflog.Trace(ctx, "resourceArrayAzureUpdate")
 	diags := resourceArrayAzureRead(ctx, d, m)
 	if diags.HasError() {
 		return diags
@@ -621,7 +674,8 @@ func resourceArrayAzureUpdate(ctx context.Context, d *schema.ResourceData, m int
 }
 
 func resourceArrayAzureDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	azureClient, diags := m.(*CbsService).azureClientService()
+	tflog.Trace(ctx, "resourceArrayAzureDelete")
+	azureClient, diags := m.(*CbsService).azureClientService(ctx)
 	if diags.HasError() {
 		return diags
 	}
@@ -748,6 +802,16 @@ func expandPlan(input []interface{}) *managedapplications.Plan {
 	}
 }
 
+func flattenJitApprovalGroupIds(policy *managedapplications.ApplicationJitAccessPolicy) []string {
+	var groupList []string
+	for _, g := range *policy.JitApprovers {
+		if g.Type == managedapplications.Group {
+			groupList = append(groupList, *g.ID)
+		}
+	}
+	return groupList
+}
+
 func flattenJitApproval(policy *managedapplications.ApplicationJitAccessPolicy) []map[string]interface{} {
 	results := make([]map[string]interface{}, 1)
 
@@ -755,7 +819,7 @@ func flattenJitApproval(policy *managedapplications.ApplicationJitAccessPolicy) 
 	result := make(map[string]interface{})
 	var groupList []string
 	for _, g := range *policy.JitApprovers {
-		groupList = append(groupList, *g.DisplayName)
+		groupList = append(groupList, to.String(g.DisplayName))
 	}
 	approver["groups"] = groupList
 	approvers := make([]map[string]interface{}, 1)
@@ -778,18 +842,23 @@ func vaultIdSecretName(d *schema.ResourceData) (vaultId string, secretName strin
 
 // Here we just write/read from the secret, just to make sure that we have a properly configured key_vault_id
 func prevalidateKeyVaultId(ctx context.Context, d *schema.ResourceData, azureClient cloud.AzureClientAPI) error {
+	tflog.Trace(ctx, "prevalidateKeyVaultId")
 	vaultId, secretName := vaultIdSecretName(d)
 	const placeholderText = "PLACEHOLDER"
 
 	existing, err := azureClient.SecretGet(ctx, vaultId, secretName, "")
-	if !(utils.ResponseWasNotFound(existing.Response) || (err != nil && *existing.Value == placeholderText)) {
+	if !(utils.ResponseWasNotFound(existing.Response) || (existing.Value != nil && *existing.Value == placeholderText)) {
 		if err != nil {
 			return fmt.Errorf("failed to check for existing secret: %+v Secret name: %s key_vault_id: %s", err, secretName, vaultId)
-		} else {
+		} else if existing.Value != nil {
 			return fmt.Errorf("secret already exists, please check for existing deployment, or change resource group or name. Secret name: %s key_vault_id: %s", secretName, vaultId)
+		} else {
+			return fmt.Errorf("unhandled exceptional case while checking existing secret: Secret name: %s key_vault_id: %s  Response Status: %s Body: %s",
+				secretName, vaultId, existing.Request.Response.Status, existing.Response.Body)
 		}
 	}
 
+	tflog.Trace(ctx, "prevalidateKeyVaultId azureClient.SecretSet")
 	setSecret, err := azureClient.SecretSet(ctx, vaultId, secretName, vaultSecret.SecretSetParameters{Value: to.StringPtr(placeholderText)})
 	if utils.ResponseWasStatusCode(setSecret.Response, 409 /* Conflict: Deleted but not purged */) {
 		err = azureClient.SecretRecover(ctx, vaultId, secretName)
@@ -822,11 +891,12 @@ func prevalidateKeyVaultId(ctx context.Context, d *schema.ResourceData, azureCli
 func generateAndSetSecret(ctx context.Context, d *schema.ResourceData, azureClient cloud.AzureClientAPI) error {
 	vaultId, secretName := vaultIdSecretName(d)
 
-	restCredentials, err := generateSecretPayload(d)
+	restCredentials, err := generateSecretPayload(ctx, d)
 	if err != nil {
 		return err
 	}
 
+	tflog.Trace(ctx, "generateAndSetSecret azureClient.SecretSet")
 	_, err = azureClient.SecretSet(ctx, vaultId, secretName, vaultSecret.SecretSetParameters{Value: to.StringPtr((string(restCredentials)))})
 	if err != nil {
 		return err

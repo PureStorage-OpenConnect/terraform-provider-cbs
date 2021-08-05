@@ -18,7 +18,7 @@ variable "alert_recipients" {
     type = list(string)
 }
 
-variable "groups" {
+variable "jit_group_ids" {
     type = list(string)
 }
 

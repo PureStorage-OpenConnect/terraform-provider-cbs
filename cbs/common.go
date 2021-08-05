@@ -19,6 +19,7 @@
 package cbs
 
 import (
+	"context"
 	"io/ioutil"
 	"regexp"
 	"strings"
@@ -68,11 +69,11 @@ func getSSHPrivateKeyBytes(data *schema.ResourceData) ([]byte, error) {
 	return ioutil.ReadFile(data.Get("pureuser_private_key_path").(string))
 }
 
-func generateSecretPayload(data *schema.ResourceData) ([]byte, error) {
+func generateSecretPayload(ctx context.Context, data *schema.ResourceData) ([]byte, error) {
 	keyContent, err := getSSHPrivateKeyBytes(data)
 	if err != nil {
 		return nil, err
 	}
 	bootstrap := auth.NewBootstrapService()
-	return bootstrap.GenerateSecretPayload(data.Get("management_endpoint").(string), keyContent)
+	return bootstrap.GenerateSecretPayload(ctx, data.Get("management_endpoint").(string), keyContent)
 }

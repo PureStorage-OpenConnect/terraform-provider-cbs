@@ -10,7 +10,7 @@ description: |-
 
 Allows the deployment and management of a Cloud Block Store instance on Azure. The instance is deployed as an Azure Managed Application.
 
-The instance is deployed at Purity version 6.1.8.
+The instance is deployed at Purity version 6.3.5.
 
 Refer to the [deployment guide](https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_Azure) for information on how to configure the Azure environment for the CBS instance.
 
@@ -85,11 +85,7 @@ resource "cbs_array_azure" "azure_instance" {
     iscsi_subnet = "SN-xxxxxxxxxxxxxx"
     replication_subnet = "SN-xxxxxxxxxxxxxx"
 
-    jit_approval {
-        approvers {
-              groups = ["group_xxxx"]
-        }
-    }
+    jit_approval_group_object_ids = ["xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"]
 }
 ```
 
@@ -100,7 +96,8 @@ resource "cbs_array_azure" "azure_instance" {
 - `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1` or `V20MUR1`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
 - `iscsi_subnet` (Required) - Subnet containing the iSCSI interfaces on the array.
-- `jit_approval` (Required) - A Just In Time remote access configuration block. See [below for nested schema](#nestedblock--jit_approval).
+- `jit_approval` (Optional, **Deprecated**) - A Just In Time remote access configuration block. One of `jit_approval` or `jit_approval_group_object_ids` is required. See [below for nested schema](#nestedblock--jit_approval).
+- `jit_approval_group_object_ids` (Optional) - A list of Azure group object IDs for people who are allowed to approve JIT requests. When used the maximum possible duration of a JIT access request will be set to `PT8H`. One of `jit_approval` or `jit_approval_group_object_ids` is required.
 - `key_vault_id` (Required) - Key Vault where provider stores sensitive information.
 - `license_key` (Required) - Pure Storage-provided license key.
 - `location` (Required) - Azure location in which to deploy the array.

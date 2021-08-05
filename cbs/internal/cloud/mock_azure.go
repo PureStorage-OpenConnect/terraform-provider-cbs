@@ -1,4 +1,4 @@
-// +build mock
+//go:build mock
 
 /*
 
@@ -55,7 +55,7 @@ var azureTFOutputs = []string{
 	"iSCSIEndpointCT1",
 }
 
-func buildAzureClient(config AzureConfig) (AzureClientAPI, error) {
+func buildAzureClient(ctx context.Context, config AzureConfig) (AzureClientAPI, error) {
 	return &mockAzureClient{config}, nil
 }
 
