@@ -35,4 +35,10 @@ resource "cbs_array_azure" "azure_instance" {
               groups = var.groups
         }
     }
+    plan {
+        name = var.plan_name
+        product = var.plan_product
+        publisher = var.plan_publisher
+        version = var.plan_version
+    }
 }

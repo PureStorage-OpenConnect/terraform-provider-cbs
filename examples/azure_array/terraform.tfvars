@@ -14,3 +14,7 @@ system_subnet = "SN-xxxxxxxxxxxxxx"
 iscsi_subnet = "SN-xxxxxxxxxxxxxx"
 replication_subnet = "SN-xxxxxxxxxxxxxx"
 groups = ["group_xxxx"]
+plan_name = "cbs_azure_6_2_1"
+plan_product = "pure_storage_cloud_block_store_deployment"
+plan_publisher = "purestoragemarketplaceadmin"
+plan_version = "latest"
