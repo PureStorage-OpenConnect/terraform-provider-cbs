@@ -1,7 +1,7 @@
 #Variables
 region                  = "us-west-2"
 array_name              = "array-name"
-template_url            = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.2713e2df-d62d-495d-2983-cf1246856bb1.template"
+template_url            = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.18cd55bc-47be-45e3-8eaa-2b00c594fa57.template"
 deployment_role_arn     = "arn:aws:iam::xxxxxxxxxxxx:role/example_role"
 log_sender_domain       = "example-company.org"
 alert_recipients        = ["admin1@example-company.org", "admin2@example-company.org"]
