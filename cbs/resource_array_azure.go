@@ -22,21 +22,21 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
+
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/auth"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/tfazurerm"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/version"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/tfazurerm"
 
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-07-01/managedapplications"
-	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
 	mapset "github.com/deckarep/golang-set"
 
@@ -46,11 +46,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-const kind = "MarketPlace"
-
 // Default managed application plan
 const (
-	defaultPlanName      = "cbs_azure_6_3_5"
+	defaultPlanName      = "cbs_azure_6_3_8"
 	defaultPlanProduct   = "pure_storage_cloud_block_store_deployment"
 	defaultPlanPublisher = "purestoragemarketplaceadmin"
 	defaultPlanVersion   = "1.0.0"
@@ -110,13 +108,8 @@ var azureTFOutputs = []string{
 	"iSCSIEndpointCT1",
 }
 
-type azureParameterValue struct {
-	valType string
-	value   interface{}
-}
-
 func resourceArrayAzure() *schema.Resource {
-	return &schema.Resource{
+	sch := &schema.Resource{
 		CreateContext: resourceArrayAzureCreate,
 		ReadContext:   resourceArrayAzureRead,
 		UpdateContext: resourceArrayAzureUpdate,
@@ -126,7 +119,7 @@ func resourceArrayAzure() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
-				ValidateFunc: validateResourceGroupName,
+				ValidateFunc: validateAzureResourceGroupName,
 			},
 
 			"location": {
@@ -138,7 +131,7 @@ func resourceArrayAzure() *schema.Resource {
 			"array_name": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ValidateFunc: validateManagedApplicationName,
+				ValidateFunc: validateAzureManagedApplicationName,
 			},
 
 			"alert_recipients": {
@@ -219,60 +212,19 @@ func resourceArrayAzure() *schema.Resource {
 				}),
 			},
 
+			"fusion_sec_identity": {
+				Type:        schema.TypeString,
+				Description: "Optional input that denotes the identity of a Fusion Storage Endpoint Collection, obtained during Azure Portal GUI or CLI deployment",
+				Optional:    true,
+			},
+
 			"jit_approval_group_object_ids": {
-				Description:  "This is a list of Azure group object IDs for people who are allowed to approve JIT requests",
-				Optional:     true, // Optional for now, make it required in the future
-				Computed:     true,
-				ExactlyOneOf: []string{"jit_approval_group_object_ids", "jit_approval"},
-				Type:         schema.TypeList,
+				Description: "This is a list of Azure group object IDs for people who are allowed to approve JIT requests",
+				Required:    true,
+				Type:        schema.TypeList,
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
 					ValidateFunc: validation.IsUUID,
-				},
-			},
-
-			"jit_approval": {
-				Type:         schema.TypeList,
-				Optional:     true,
-				Computed:     true,
-				MaxItems:     1,
-				Deprecated:   "please convert your config to use the jit_approval_group_object_ids parameter instead.  The old interface will be removed in the future",
-				ExactlyOneOf: []string{"jit_approval_group_object_ids", "jit_approval"},
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"activation_maximum_duration": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Default:  "PT8H",
-							ValidateFunc: validation.StringInSlice([]string{
-								"PT1H",
-								"PT2H",
-								"PT3H",
-								"PT4H",
-								"PT5H",
-								"PT6H",
-								"PT7H",
-								"PT8H",
-							}, false),
-						},
-						"approvers": {
-							Type:     schema.TypeList,
-							Required: true,
-							MaxItems: 1,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"groups": {
-										Type:     schema.TypeList,
-										Required: true,
-										Elem: &schema.Schema{
-											Type:         schema.TypeString,
-											ValidateFunc: validation.StringIsNotEmpty,
-										},
-									},
-								},
-							},
-						},
-					},
 				},
 			},
 
@@ -367,6 +319,21 @@ func resourceArrayAzure() *schema.Resource {
 			Delete: schema.DefaultTimeout(50 * time.Minute),
 		},
 	}
+
+	// Allow for more extensive testing when in development mode
+	if version.IsDevelopmentMode() {
+		sch.Schema["app_definition_id"] = &schema.Schema{
+			Type:          schema.TypeString,
+			Optional:      true,
+			ConflictsWith: []string{"plan"},
+		}
+
+		sch.Schema["plan"].ConflictsWith = []string{"app_definition_id"}
+		sch.Schema["array_model"].ValidateFunc = nil
+		sch.Schema["jit_approval_group_object_ids"].Required = false
+		sch.Schema["jit_approval_group_object_ids"].Optional = true
+	}
+	return sch
 }
 
 func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m interface{}) (returnedDiags diag.Diagnostics) {
@@ -377,14 +344,14 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 
 	name := d.Get("array_name").(string)
-	managedResourceGroup := toManagedResourceGroup(name)
+	managedResourceGroup := toAzureManagedResourceGroup(name)
 	resourceGroupName := d.Get("resource_group_name").(string)
 
 	if d.IsNewResource() {
 		existing, err := azureClient.AppsGet(ctx, resourceGroupName, name)
 		if err != nil {
 			if !responseWasNotFound(existing.Response) {
-				return diag.Errorf("failed to check for present of existing Managed Application Name %q (Resource Group %q): %+v", name, resourceGroupName, err)
+				return diag.Errorf("failed to check for presence of existing Managed Application Name %q (Resource Group %q): %+v", name, resourceGroupName, err)
 			}
 		}
 		if existing.ID != nil && *existing.ID != "" {
@@ -394,7 +361,6 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	parameters := managedapplications.Application{
 		Location: to.StringPtr(d.Get("location").(string)),
-		Kind:     to.StringPtr(kind),
 	}
 
 	targetResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", azureClient.SubscriptionID(), managedResourceGroup)
@@ -402,14 +368,20 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		ManagedResourceGroupID: to.StringPtr(targetResourceGroupId),
 	}
 
-	if v, ok := d.GetOk("plan"); ok && len(v.([]interface{})) > 0 {
-		parameters.Plan = expandPlan(v.([]interface{}))
+	if appDefinitionId, ok := d.GetOk("app_definition_id"); ok {
+		parameters.Kind = to.StringPtr("ServiceCatalog")
+		parameters.ApplicationDefinitionID = to.StringPtr(appDefinitionId.(string))
 	} else {
-		parameters.Plan = &managedapplications.Plan{
-			Name:      to.StringPtr(defaultPlanName),
-			Product:   to.StringPtr(defaultPlanProduct),
-			Publisher: to.StringPtr(defaultPlanPublisher),
-			Version:   to.StringPtr(defaultPlanVersion),
+		parameters.Kind = to.StringPtr("MarketPlace")
+		if v, ok1 := d.GetOk("plan"); ok1 && len(v.([]interface{})) > 0 {
+			parameters.Plan = expandPlan(v.([]interface{}))
+		} else {
+			parameters.Plan = &managedapplications.Plan{
+				Name:      to.StringPtr(defaultPlanName),
+				Product:   to.StringPtr(defaultPlanProduct),
+				Publisher: to.StringPtr(defaultPlanPublisher),
+				Version:   to.StringPtr(defaultPlanVersion),
+			}
 		}
 	}
 
@@ -433,67 +405,20 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		}
 	}
 
-	{
-
-		var approvers []managedapplications.JitApproverDefinition
-		var activationMaximumDuration string
-
-		// This handles Jit groups specified by object ids
-
-		if objectIds, ok := d.GetOk("jit_approval_group_object_ids"); ok {
-			ids := convertToStringSlice(objectIds.([]interface{}))
-			if len(ids) == 0 {
-				returnedDiags = append(returnedDiags, diag.Errorf("jit_approval_group_object_ids must not be empty")...)
-			}
-			for _, id := range ids {
-				approvers = append(approvers, managedapplications.JitApproverDefinition{
-					ID:   to.StringPtr(id),
-					Type: managedapplications.Group,
-				})
-			}
-			// If using new jit_approval scheme we want to use the longest possible activation
-			activationMaximumDuration = "PT8H"
-		}
-
-		// This handles Jit Groups specified by name (Deprecated feature, to be removed in future major version bump)
-		if oldApproval, ok := d.GetOk("jit_approval"); ok {
-			approval := oldApproval.([]interface{})[0].(map[string]interface{})
-			if approval["approvers"].([]interface{})[0] == nil {
-				return diag.Errorf("JIT group list cannot be empty.")
-			}
-			approver := approval["approvers"].([]interface{})[0].(map[string]interface{})
-			displayNameList := convertToStringSlice(approver["groups"].([]interface{}))
-			for _, displayName := range displayNameList {
-				group, err := groupGetByDisplayName(ctx, azureClient, displayName)
-				if err != nil {
-					return diag.Errorf("No group found matching specified name %q: %+v", displayName, err)
-				}
-				if group.ObjectID == nil {
-					return diag.Errorf("Group returned with nil object ID: %+v", err)
-				}
-				newApprover := managedapplications.JitApproverDefinition{
-					DisplayName: to.StringPtr(displayName),
-					ID:          group.ObjectID,
-					Type:        managedapplications.Group,
-				}
-				approvers = append(approvers, newApprover)
-			}
-			activationMaximumDuration = approval["activation_maximum_duration"].(string)
-		}
-
-		parameters.ApplicationProperties.JitAccessPolicy = &managedapplications.ApplicationJitAccessPolicy{
-			JitAccessEnabled:         to.BoolPtr(true),
-			JitApprovalMode:          managedapplications.JitApprovalModeManualApprove,
-			MaximumJitAccessDuration: to.StringPtr(activationMaximumDuration),
-			JitApprovers:             &approvers,
-		}
-	}
+	returnedDiags = setAzureJitAccessPolicy(&parameters, d)
 
 	if v, ok := d.GetOk("alert_recipients"); ok {
 		newRecips := convertToStringSlice(v.([]interface{}))
 		setAppParameter("alertRecipients", strings.Join(newRecips, ","))
 	} else { // Deployment template has validation check on 'alertRecipients'. If not set, it should be "" instead of null.
 		setAppParameter("alertRecipients", "")
+	}
+
+	if v, ok := d.GetOk("fusion_sec_identity"); ok {
+		fusionIdentity := expandFusionIdentity(v.(string))
+
+		parameters.Identity = fusionIdentity
+		setAppParameter("fusionSECIdentity", fusionIdentity)
 	}
 
 	if v, ok := d.GetOk("tags"); ok {
@@ -516,7 +441,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		}
 	}()
 
-	pvtKeyBytes, err := getSSHPrivateKeyBytes(d)
+	pvtKeyBytes, err := getSSHPrivateKeyBytesFromResourceData(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -563,6 +488,7 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	return returnedDiags
 }
+
 func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	tflog.Trace(ctx, "resourceArrayAzureRead")
 	azureClient, diags := m.(*CbsService).azureClientService(ctx)
@@ -577,7 +503,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 		return nil
 	}
 	appName := v.(string)
-	managedResourceGroup := toManagedResourceGroup(appName)
+	managedResourceGroup := toAzureManagedResourceGroup(appName)
 
 	resourceGroup := d.Get("resource_group_name").(string)
 	resp, err := azureClient.AppsGet(ctx, resourceGroup, appName)
@@ -596,7 +522,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 	d.Set("location", resp.Location)
 
 	if props := resp.ApplicationProperties; props != nil {
-		params := formatParameters(props.Parameters)
+		params := formatAzureParameters(props.Parameters)
 		azureParamSet := mapset.NewSetFromSlice(azureParams)
 		var vnetName, vnetRGName string
 		for k, v := range params {
@@ -634,10 +560,7 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 			azureClient.SubscriptionID(), vnetRGName, vnetName)
 		d.Set("virtual_network_id", vnetId)
 
-		if err := d.Set("jit_approval", flattenJitApproval(props.JitAccessPolicy)); err != nil {
-			return diag.FromErr(err)
-		}
-		if err := d.Set("jit_approval_group_object_ids", flattenJitApprovalGroupIds(props.JitAccessPolicy)); err != nil {
+		if err := d.Set("jit_approval_group_object_ids", flattenAzureJitApprovalGroupIds(props.JitAccessPolicy)); err != nil {
 			return diag.FromErr(err)
 		}
 
@@ -682,13 +605,13 @@ func resourceArrayAzureDelete(ctx context.Context, d *schema.ResourceData, m int
 
 	vaultId, secretName := vaultIdSecretName(d)
 
-	faClient, err := azureClient.NewFAClient(d.Get("management_endpoint").(string), vaultId, secretName)
+	faClient, err := azureClient.NewFAClient(ctx, d.Get("management_endpoint").(string), vaultId, secretName)
 	if err != nil {
 		return diag.Errorf("failed to create FA client with managed application ID: %s. "+
 			"Please contact Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
 	}
 
-	if err := faClient.Deactivate(); err != nil {
+	if err := faClient.Deactivate(ctx); err != nil {
 		return diag.Errorf("failed to deactivate the instance with Id %s. Please contact "+
 			"Pure Storage support: %+v.", d.Id(), err)
 	}
@@ -708,35 +631,6 @@ func resourceArrayAzureDelete(ctx context.Context, d *schema.ResourceData, m int
 	return nil
 }
 
-func validateManagedApplicationName(v interface{}, k string) (warnings []string, errors []error) {
-	value := v.(string)
-
-	if !regexp.MustCompile(`^[-\da-zA-Z]{3,64}$`).MatchString(value) {
-		errors = append(errors, fmt.Errorf("%q must be between 3 and 64 characters in length and contains only letters, numbers or hyphens", k))
-	}
-
-	return warnings, errors
-}
-
-func validateResourceGroupName(v interface{}, k string) (warnings []string, errors []error) {
-	value := v.(string)
-
-	if len(value) > 90 {
-		errors = append(errors, fmt.Errorf("%q may not exceed 90 characters in length", k))
-	}
-
-	if strings.HasSuffix(value, ".") {
-		errors = append(errors, fmt.Errorf("%q may not end with a period", k))
-	}
-
-	// regex pulled from https://docs.microsoft.com/en-us/rest/api/resources/resourcegroups/createorupdate
-	if matched := regexp.MustCompile(`^[-\w._()]+$`).Match([]byte(value)); !matched {
-		errors = append(errors, fmt.Errorf("%q may only contain alphanumeric characters, dash, underscores, parentheses and periods", k))
-	}
-
-	return warnings, errors
-}
-
 func validateKeyVaultId(v interface{}, k string) (warnings []string, errors []error) {
 
 	_, _, err := tfazurerm.ParseNameRGFromID(v.(string), "vaults")
@@ -745,21 +639,6 @@ func validateKeyVaultId(v interface{}, k string) (warnings []string, errors []er
 	}
 
 	return
-}
-
-func responseWasNotFound(resp autorest.Response) bool {
-	if r := resp.Response; r != nil {
-		if r.StatusCode == http.StatusNotFound {
-			return true
-		}
-	}
-
-	return false
-}
-
-func toManagedResourceGroup(name string) string {
-	result := name + "-cbs-mrg"
-	return result
 }
 
 func groupGetByDisplayName(ctx context.Context, client cloud.AzureClientAPI, displayName string) (*graphrbac.ADGroup, error) {
@@ -791,44 +670,13 @@ func groupGetByDisplayName(ctx context.Context, client cloud.AzureClientAPI, dis
 	return &group, nil
 }
 
-func expandPlan(input []interface{}) *managedapplications.Plan {
-	plan := input[0].(map[string]interface{})
-
-	return &managedapplications.Plan{
-		Name:      to.StringPtr(plan["name"].(string)),
-		Product:   to.StringPtr(plan["product"].(string)),
-		Publisher: to.StringPtr(plan["publisher"].(string)),
-		Version:   to.StringPtr(plan["version"].(string)),
+func expandFusionIdentity(fusionSECIdentity string) *managedapplications.Identity {
+	return &managedapplications.Identity{
+		Type: managedapplications.ResourceIdentityTypeUserAssigned,
+		UserAssignedIdentities: map[string]*managedapplications.UserAssignedResourceIdentity{
+			fusionSECIdentity: {},
+		},
 	}
-}
-
-func flattenJitApprovalGroupIds(policy *managedapplications.ApplicationJitAccessPolicy) []string {
-	var groupList []string
-	for _, g := range *policy.JitApprovers {
-		if g.Type == managedapplications.Group {
-			groupList = append(groupList, *g.ID)
-		}
-	}
-	return groupList
-}
-
-func flattenJitApproval(policy *managedapplications.ApplicationJitAccessPolicy) []map[string]interface{} {
-	results := make([]map[string]interface{}, 1)
-
-	approver := make(map[string]interface{})
-	result := make(map[string]interface{})
-	var groupList []string
-	for _, g := range *policy.JitApprovers {
-		groupList = append(groupList, to.String(g.DisplayName))
-	}
-	approver["groups"] = groupList
-	approvers := make([]map[string]interface{}, 1)
-	approvers[0] = approver
-	result["approvers"] = approvers
-	result["activation_maximum_duration"] = *policy.MaximumJitAccessDuration
-	results[0] = result
-
-	return results
 }
 
 var invalidSecretCharacters = regexp.MustCompile("[^a-zA-Z0-9-]+")
@@ -902,18 +750,4 @@ func generateAndSetSecret(ctx context.Context, d *schema.ResourceData, azureClie
 		return err
 	}
 	return nil
-}
-
-func formatParameters(val interface{}) map[string]azureParameterValue {
-	rawParams := val.(map[string]interface{})
-	params := make(map[string]azureParameterValue)
-	for k, v := range rawParams {
-		if v != nil {
-			params[k] = azureParameterValue{
-				valType: v.(map[string]interface{})["type"].(string),
-				value:   v.(map[string]interface{})["value"],
-			}
-		}
-	}
-	return params
 }

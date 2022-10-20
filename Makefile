@@ -1,4 +1,4 @@
-DEV_PKGDIR := $(HOME)/.terraform.d/plugins/terraform.purestorage.com/flasharray/cbs/
+DEV_PKGDIR := $(HOME)/.terraform.d/plugins/registry.terraform.io/PureStorage-OpenConnect/cbs
 DEV_GOBIN := $(DEV_PKGDIR)/99.99/linux_amd64/
 export SRC_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 SHELL=/bin/bash -eEuo pipefail # Set sane shell options
@@ -9,13 +9,18 @@ export GNUPGHOME := /tmp/gnupg
 export PATH := $(TMPBIN):$(PATH)
 export PS_HTTP_TRACE_LOGGING := 1
 
--include */Makefile.mk
+PKG_LIST           := $(shell go list ./... )
+# List of packages that are part of the generated SDK
+GENERATED_PKG_LIST := $(shell go list ./... | grep 2.4)
+FILTERED_PKG_LIST  := $(filter-out $(GENERATED_PKG_LIST), $(PKG_LIST))
+LDFLAGS            := -X 'github.com/PureStorage-OpenConnect/terraform-provider-cbs/version.ProviderCommit=$(shell git rev-parse --short HEAD)'
 
-default: build
+include */Makefile.mk
+
+.DEFAULT_GOAL := build
 
 setup-basic:
 	@mkdir -p .build-logs/
-
 
 setup-goreleaser:
 	@curl -sfLO https://github.com/goreleaser/goreleaser/releases/download/v1.9.2/goreleaser_Linux_x86_64.tar.gz
@@ -37,16 +42,16 @@ test-goreleaser-check: setup-goreleaser setup-basic
 	@CI="" goreleaser check >> .build-logs/goreleaser-check 2>&1
 
 build:
-	go build
+	go build -ldflags="$(LDFLAGS)"
 
 testacc:
-	TF_ACC=1 go test ./cbs -v -timeout 120m
+	TF_ACC=1 go test -ldflags="$(LDFLAGS)" ./cbs -v -timeout 120m
 
 install-dev-mock:
-	GOBIN=$(DEV_GOBIN) go install --tags mock
+	GOBIN=$(DEV_GOBIN) go install -ldflags="$(LDFLAGS)" --tags mock
 
 install-dev:
-	GOBIN=$(DEV_GOBIN) go install
+	GOBIN=$(DEV_GOBIN) go install -ldflags="$(LDFLAGS)"
 
 install-dev-clean:
 	@rm -rvf $(DEV_PKGDIR)
@@ -55,9 +60,29 @@ install-dev-clean:
 # The redirections and tee/grep stuff above is to help reduce console noise, we filter out all of the nominal messages, so its easier to see any errors
 # the full unfiltered log is in .build-logs/acc-mock
 
-test-vet:
-	@go vet ./cbs
-	@go vet -tags mock ./cbs
+vet:
+	@echo "Running go vet..."
+	@go vet $(FILTERED_PKG_LIST)
+	@go vet --tags mock $(FILTERED_PKG_LIST)
+
+fmt:
+	@echo "Fixing sources with gofmt..."
+	@go fmt $(PKG_LIST)
+	@git diff --exit-code || \
+		(echo; echo "Unexpected difference in source files after running 'go fmt'. Review the changes and commit them."; exit 1)
+
+depscheck:
+	@echo "Checking source code with go mod tidy..."
+	@go mod tidy
+	@git diff --exit-code go.mod go.sum || \
+		(echo; echo "Unexpected difference in go.mod/go.sum files. Run 'go mod tidy' command or revert any go.mod/go.sum changes and commit."; exit 1)
+
+# For local development, CI does not run this
+golangci-lint:
+	@golangci-lint run
+
+pkglist:
+	@echo "$(PKG_LIST)" | tr ' ' '\n'
 
 tidy:
 	@go get -u

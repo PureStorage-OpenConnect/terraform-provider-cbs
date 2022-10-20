@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+terraform-provider-cbs
 
 # Test binary, built with `go test -c`
 *.test
@@ -22,4 +23,5 @@
 
 /.build/
 /.build-logs/
+/.build-products/
 **/.vscode/

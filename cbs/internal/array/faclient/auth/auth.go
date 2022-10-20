@@ -3,7 +3,7 @@ package auth
 import (
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 const defaultExpTimeSec = 315360000 //10 years

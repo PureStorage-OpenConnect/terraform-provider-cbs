@@ -31,14 +31,14 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-07-01/managedapplications"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
 
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/mockdb"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/mockdb"
 )
 
 var azureTFOutputs = []string{
@@ -53,6 +53,10 @@ var azureTFOutputs = []string{
 	"replicationEndpointCT1",
 	"iSCSIEndpointCT0",
 	"iSCSIEndpointCT1",
+	// Fusion Storage Endpoint Azure specific outputs
+	"hmvip0",
+	"hmvip1",
+	"loadBalancerFullIdentityId",
 }
 
 func buildAzureClient(ctx context.Context, config AzureConfig) (AzureClientAPI, error) {
@@ -95,10 +99,13 @@ func (m *mockAzureClient) AppsCreateOrUpdate(ctx context.Context, resourceGroupN
 
 	appParams := parameters.ApplicationProperties.Parameters.(map[string]interface{})
 	appParams["_artifactsLocationSasToken"] = map[string]interface{}{"type": "SecureString"}
-	appParams["licenseKey"].(map[string]interface{})["type"] = "SecureString"
-	appParams["licenseKey"].(map[string]interface{})["value"] = nil
-	appParams["pureuserPublicKey"].(map[string]interface{})["type"] = "SecureString"
-	appParams["pureuserPublicKey"].(map[string]interface{})["value"] = nil
+
+	if applicationName == "tf-acc-azure" {
+		appParams["licenseKey"].(map[string]interface{})["type"] = "SecureString"
+		appParams["licenseKey"].(map[string]interface{})["value"] = nil
+		appParams["pureuserPublicKey"].(map[string]interface{})["type"] = "SecureString"
+		appParams["pureuserPublicKey"].(map[string]interface{})["value"] = nil
+	}
 
 	for _, v := range appParams {
 		t := v.(map[string]interface{})["type"]
@@ -190,7 +197,7 @@ func (azureClient *mockAzureClient) SecretRecover(ctx context.Context, vaultId s
 	return nil
 }
 
-func (azureClient *mockAzureClient) NewFAClient(host string, vaultId string, secretName string) (array.FAClientAPI, error) {
+func (azureClient *mockAzureClient) NewFAClient(ctx context.Context, host string, vaultId string, secretName string) (array.FAClientAPI, error) {
 	return &array.MockFAClient{Host: host, Kind: array.FAClientKindAzure}, nil
 }
 

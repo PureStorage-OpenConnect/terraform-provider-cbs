@@ -25,8 +25,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/version"
 	"github.com/stretchr/testify/assert"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/version"
 )
 
 const testConfigDir = "../../../testing"

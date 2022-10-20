@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
 	mapset "github.com/deckarep/golang-set"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
@@ -35,6 +35,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 var cftParams = []interface{}{
@@ -111,22 +112,19 @@ func resourceArrayAWS() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			// These two parameters are only required for AWS deactivation, which has been temporarily disabled
-			// ================================================================================================
-			// "pureuser_private_key_path": {
-			// 	Type:         schema.TypeString,
-			// 	Optional:     true,
-			// 	ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
-			// 	ValidateFunc: validation.StringIsNotEmpty,
-			// },
-			// "pureuser_private_key": {
-			// 	Type:         schema.TypeString,
-			// 	Optional:     true,
-			// 	Sensitive:    true,
-			// 	ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
-			// 	ValidateFunc: validation.StringIsNotEmpty,
-			// },
-			// ================================================================================================
+			"pureuser_private_key_path": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
+				ValidateFunc: validation.StringIsNotEmpty,
+			},
+			"pureuser_private_key": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				ExactlyOneOf: []string{"pureuser_private_key_path", "pureuser_private_key"},
+				ValidateFunc: validation.StringIsNotEmpty,
+			},
 			"system_subnet": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -201,7 +199,7 @@ func resourceArrayAWS() *schema.Resource {
 			// timeouts trigger first.
 			Create: schema.DefaultTimeout(130 * time.Minute),
 			Read:   schema.DefaultTimeout(5 * time.Minute),
-			Delete: schema.DefaultTimeout(40 * time.Minute),
+			Delete: schema.DefaultTimeout(50 * time.Minute),
 		},
 	}
 }
@@ -266,18 +264,15 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 		})
 	}
 
-	// Deactivation in AWS has been temporarily disabled
-	if false {
-		// Get Caller Identity on behalf of provider role
-		res, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		params = append(params, &cloudformation.Parameter{
-			ParameterKey:   aws.String("AdminArn"),
-			ParameterValue: aws.String(*res.Arn),
-		})
+	// Get Caller Identity on behalf of provider role
+	res, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	if err != nil {
+		return diag.FromErr(err)
 	}
+	params = append(params, &cloudformation.Parameter{
+		ParameterKey:   aws.String("AdminArn"),
+		ParameterValue: aws.String(*res.Arn),
+	})
 
 	var tags []*cloudformation.Tag
 	if v, ok := d.GetOk("tags"); ok {
@@ -314,29 +309,26 @@ func resourceArrayAWSCreate(ctx context.Context, d *schema.ResourceData, m inter
 		return diags
 	}
 
-	// Deactivation in AWS has been temporarily disabled
-	if false {
-		adminSecretsManagerArn, err := getSecretsManagerArn(awsClient, waiterInput)
-		if err != nil {
-			return diag.FromErr(err)
-		}
+	adminSecretsManagerArn, err := getSecretsManagerArn(awsClient, waiterInput)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-		// Bootstrap the array
-		credentials, err := generateSecretPayload(ctx, d)
-		if err != nil {
-			return diag.Errorf("failed to bootstrap the CloudFormation stack with Id %s. Please contact "+
-				"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
-		}
+	// Bootstrap the array
+	credentials, err := generateSecretPayload(ctx, d)
+	if err != nil {
+		return diag.Errorf("failed to bootstrap the CloudFormation stack with Id %s. Please contact "+
+			"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
+	}
 
-		// Set secret payload to secrets manager
-		secretInput := &secretsmanager.PutSecretValueInput{
-			SecretId:     aws.String(string(adminSecretsManagerArn)),
-			SecretString: aws.String(string(credentials)),
-		}
-		if _, err := awsClient.PutSecretValue(secretInput); err != nil {
-			return diag.Errorf("failed to store credentials on the CloudFormation stack with Id %s. Please contact "+
-				"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
-		}
+	// Set secret payload to secrets manager
+	secretInput := &secretsmanager.PutSecretValueInput{
+		SecretId:     aws.String(string(adminSecretsManagerArn)),
+		SecretString: aws.String(string(credentials)),
+	}
+	if _, err := awsClient.PutSecretValue(secretInput); err != nil {
+		return diag.Errorf("failed to store credentials on the CloudFormation stack with Id %s. Please contact "+
+			"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
 	}
 
 	return nil
@@ -421,32 +413,20 @@ func resourceArrayAWSDelete(ctx context.Context, d *schema.ResourceData, m inter
 		StackName: aws.String(d.Id()),
 	}
 
-	// Deactivation in AWS has been temporarily disabled
-	if false {
-		adminSecretsManagerArn, err := getSecretsManagerArn(awsClient, waiterInput)
-		if err != nil {
-			return diag.FromErr(err)
-		}
+	adminSecretsManagerArn, err := getSecretsManagerArn(awsClient, waiterInput)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-		faClient, err := awsClient.NewFAClient(d.Get("management_endpoint").(string), adminSecretsManagerArn)
-		if err != nil {
-			return diag.Errorf("failed to create FA client on the CloudFormation stack with Id %s. Please contact "+
-				"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
-		}
+	faClient, err := awsClient.NewFAClient(ctx, d.Get("management_endpoint").(string), adminSecretsManagerArn)
+	if err != nil {
+		return diag.Errorf("failed to create FA client on the CloudFormation stack with Id %s. Please contact "+
+			"Pure Storage support to deactivate the instance: %+v.", d.Id(), err)
+	}
 
-		if err := faClient.Deactivate(); err != nil {
-			return diag.Errorf("failed to deactivate the instance with Id %s. Please contact "+
-				"Pure Storage support: %+v.", d.Id(), err)
-		}
-	} else {
-		input := &cloudformation.DeleteStackInput{
-			RoleARN:   aws.String(d.Get("deployment_role_arn").(string)),
-			StackName: aws.String(d.Id()),
-		}
-
-		if _, err := awsClient.DeleteStack(input); err != nil {
-			return diag.FromErr(err)
-		}
+	if err := faClient.Deactivate(ctx); err != nil {
+		return diag.Errorf("failed to deactivate the instance with Id %s. Please contact "+
+			"Pure Storage support: %+v.", d.Id(), err)
 	}
 
 	if err := awsClient.WaitUntilStackDeleteCompleteWithContext(ctx, waiterInput); err != nil {

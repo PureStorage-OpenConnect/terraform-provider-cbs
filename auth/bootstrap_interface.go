@@ -22,6 +22,7 @@ import "context"
 
 type Bootstrapper interface {
 	GenerateSecretPayload(ctx context.Context, host string, pureuserPrivateKey []byte) ([]byte, error)
+	OptOutDefaultProtectionPolicy(ctx context.Context, host string, pureuserPrivateKey []byte) error
 }
 
 type SecretPayload struct {

@@ -46,12 +46,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/tracing"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/tfazurerm"
 	"github.com/hashicorp/go-azure-helpers/authentication"
 	"github.com/hashicorp/go-azure-helpers/sender"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/tfazurerm"
 )
 
 const azureEnvironment = "public"
@@ -146,15 +146,15 @@ func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientA
 	}
 
 	sender := sender.BuildSender("cbs")
-	auth, err := config.GetAuthorizationToken(sender, oauthConfig, env.TokenAudience)
+	auth, err := config.GetADALToken(ctx, sender, oauthConfig, env.TokenAudience)
 	if err != nil {
 		return nil, err
 	}
-	graphAuth, err := config.GetAuthorizationToken(sender, oauthConfig, env.GraphEndpoint)
+	graphAuth, err := config.GetADALToken(ctx, sender, oauthConfig, env.GraphEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	vaultAuthorizer := config.BearerAuthorizerCallback(sender, oauthConfig)
+	vaultAuthorizer := config.ADALBearerAuthorizerCallback(ctx, sender, oauthConfig)
 
 	vaultSecretClient := vaultSecret.New()
 	vaultSecretClient.Authorizer = vaultAuthorizer
@@ -277,9 +277,9 @@ func (azureClient *azureClient) baseUriForKeyVault(ctx context.Context, azureId 
 	return resp.Properties.VaultURI, nil
 }
 
-func (azureClient *azureClient) NewFAClient(host string, vaultId string, secretName string) (array.FAClientAPI, error) {
+func (azureClient *azureClient) NewFAClient(ctx context.Context, host string, vaultId string, secretName string) (array.FAClientAPI, error) {
 
-	secret, err := azureClient.SecretGet(context.TODO(), vaultId, secretName, "")
+	secret, err := azureClient.SecretGet(ctx, vaultId, secretName, "")
 	if err != nil {
 		return nil, err
 	}

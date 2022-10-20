@@ -47,3 +47,7 @@ func (b *mockBootstrapService) GenerateSecretPayload(ctx context.Context, host s
 
 	return credentials, nil
 }
+
+func (b *mockBootstrapService) OptOutDefaultProtectionPolicy(ctx context.Context, host string, pureuserPrivateKey []byte) error {
+	return nil
+}

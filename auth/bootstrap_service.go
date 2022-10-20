@@ -29,6 +29,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"strings"
@@ -38,6 +39,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"golang.org/x/crypto/ssh"
 )
+
+const rootPgroupName = "pgroup-auto"
 
 func sshSetup(ctx context.Context, host string, pureuserPrivateKey []byte) (*ssh.Client, error) {
 	authMethod, err := pureuserPublicKeyAuth(pureuserPrivateKey)
@@ -97,6 +100,9 @@ func newClientConnWithRetries(
 		retry.OnRetry(func(n uint, err error) {
 			tflog.Trace(ctx, fmt.Sprintf("NewClientConn retry %d: %s", n, err))
 		}),
+		retry.RetryIf(func(err error) bool {
+			return strings.Contains(err.Error(), "ssh: unable to authenticate")
+		}),
 	)
 
 	return
@@ -145,6 +151,40 @@ func generateSecretPayloadReal(ctx context.Context, host string, pureuserPrivate
 	}
 
 	return credentials, nil
+}
+
+func optOutDefaultProtectionPolicyReal(
+	ctx context.Context,
+	host string, pureuserPrivateKey []byte,
+) error {
+	client, err := sshSetup(ctx, host, pureuserPrivateKey)
+	if err != nil {
+		return fmt.Errorf("SSH Client setup failed: %w", err)
+	}
+
+	if out, err := executeSSHPureArrayRemovePgroupsFromDefaultProtections(ctx, client); err != nil {
+		if strings.Contains(out, "invalid choice: 'default-protection'") {
+			log.Println("OptOutDefaultProtectionPolicy: RemoveDefaultProtections: missing CLI subcommand")
+			return nil
+		}
+
+		return fmt.Errorf("OptOutDefaultProtectionPolicy: RemoveDefaultProtections: out=%s err=%w", out, err)
+	}
+
+	if out, err := executeSSHPurePgroupDestroy(ctx, client, rootPgroupName); err != nil {
+		if strings.Contains(out, "Protection group does not exist") {
+			log.Printf("OptOutDefaultProtectionPolicy: PgroupDestroy: pgroup %q does not exist\n", rootPgroupName)
+			return nil
+		}
+
+		return fmt.Errorf("OptOutDefaultProtectionPolicy: PgroupDestroy: out=%s err=%w", out, err)
+	}
+
+	if out, err := executeSSHPurePgroupEradicate(ctx, client, rootPgroupName); err != nil {
+		return fmt.Errorf("OptOutDefaultProtectionPolicy: PgroupEradicate: out=%s err=%w", out, err)
+	}
+
+	return nil
 }
 
 func generateKeyPair() ([]byte, []byte, error) {
@@ -216,6 +256,7 @@ func processPasswordPrompt(ctx context.Context, password string) sshIOProcessor 
 		waitFor("Name")
 	}
 }
+
 func executeSSHPureAdminCreate(ctx context.Context, client *ssh.Client, username, password string) error {
 	tflog.Trace(ctx, "ExecuteSSHPureAdminCreate running pureadmin create")
 	return executeSSHCommandWithInputProcessing(ctx, client, "pureadmin create --role array_admin "+username, processPasswordPrompt(ctx, password))
@@ -259,6 +300,18 @@ func executeSSHPureAPIClientSetup(ctx context.Context, client *ssh.Client, apiCl
 
 }
 
+func executeSSHPureArrayRemovePgroupsFromDefaultProtections(ctx context.Context, client *ssh.Client) (string, error) {
+	return executeSSHCommandAndReturnCombinedOutput(client, "purearray default-protection set \"\" --pgroup \"\"")
+}
+
+func executeSSHPurePgroupDestroy(ctx context.Context, client *ssh.Client, pgroupName string) (string, error) {
+	return executeSSHCommandAndReturnCombinedOutput(client, "purepgroup destroy "+pgroupName)
+}
+
+func executeSSHPurePgroupEradicate(ctx context.Context, client *ssh.Client, pgroupName string) (string, error) {
+	return executeSSHCommandAndReturnCombinedOutput(client, "purepgroup eradicate "+pgroupName)
+}
+
 // Use this to ensure that something is closed (which usually does the actually
 // work for aborting) when a context is cancelled
 func closeOnCancel(ctx context.Context, closer io.Closer) {
@@ -274,7 +327,7 @@ func closeOnCancel(ctx context.Context, closer io.Closer) {
 
 // This is a helper, it consumes outBufferred one rune at a time, waiting until we see a match or hit an error
 func waitForLineContainingText(ctx context.Context, expectedString string, errHad *error, processOutputTail *string, outBuffered *bufio.Reader) {
-	ctx = tflog.With(ctx, "expectedString", expectedString)
+	ctx = tflog.SetField(ctx, "expectedString", expectedString)
 	tflog.Trace(ctx, "waiting for line containing text")
 	for {
 		newRune, _, err := outBuffered.ReadRune()
@@ -346,6 +399,18 @@ func executeSSHCommandAndReturnOutput(client *ssh.Client, cmd string) ([]string,
 		return nil, fmt.Errorf("failed to execute command %q: %+v", cmd, err)
 	}
 	return lines, nil
+}
+
+func executeSSHCommandAndReturnCombinedOutput(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("failed to start a new session: %+v", err)
+	}
+	defer session.Close()
+
+	out, err := session.CombinedOutput(cmd)
+
+	return string(out), err
 }
 
 func executeSSHCommandWithInputProcessing(ctx context.Context, client *ssh.Client, cmd string, processor sshIOProcessor) error {

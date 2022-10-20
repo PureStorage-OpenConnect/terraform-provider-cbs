@@ -24,18 +24,17 @@ import (
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
 )
 
 type AWSClientAPI interface {
 	CreateStack(input *cloudformation.CreateStackInput) (*cloudformation.CreateStackOutput, error)
 	DescribeStacks(input *cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
-	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
 	WaitUntilStackCreateCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error
 	WaitUntilStackDeleteCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error
 	GetCallerIdentity(input *sts.GetCallerIdentityInput) (*sts.GetCallerIdentityOutput, error)
@@ -43,7 +42,7 @@ type AWSClientAPI interface {
 	GetSecretValue(input *secretsmanager.GetSecretValueInput) (*secretsmanager.GetSecretValueOutput, error)
 	DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
 	ValidateTemplate(input *cloudformation.ValidateTemplateInput) (*cloudformation.ValidateTemplateOutput, error)
-	NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error)
+	NewFAClient(ctx context.Context, host string, adminSecretsManagerArn string) (array.FAClientAPI, error)
 }
 
 func NewAWSClient(region string) (AWSClientAPI, error) {
@@ -68,7 +67,7 @@ type AzureClientAPI interface {
 	SecretDelete(ctx context.Context, vaultId string, secretName string) (vaultSecret.DeletedSecretBundle, error)
 	SecretRecover(ctx context.Context, vaultId string, secretName string) error
 	DeactivateWait()
-	NewFAClient(host string, vaultId string, secretName string) (array.FAClientAPI, error)
+	NewFAClient(ctx context.Context, host string, vaultId string, secretName string) (array.FAClientAPI, error)
 }
 
 func NewAzureClient(ctx context.Context, config AzureConfig) (AzureClientAPI, error) {

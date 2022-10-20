@@ -19,6 +19,7 @@
 package cbs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -27,6 +28,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/acceptance"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -35,36 +37,22 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
-type cbsAwsParams struct {
-	DeploymentRoleArn      string `json:"deployment_role_arn"`
-	LicenseKey             string `json:"license_key"`
-	PureuserKeyPairName    string `json:"pureuser_key_pair_name"`
-	PureuserPrivateKeyPath string `json:"pureuser_private_key_path"`
-	PureuserPrivateKey     string `json:"pureuser_private_key"`
-	Subnet                 string `json:"subnet"`
-	SecurityGroup          string `json:"security_group"`
-}
-
-var awsParams cbsAwsParams
+var awsParams acceptance.AccTestCbsAwsParams
 var awsParamsConfigure sync.Once
 var awsRegionConfigure sync.Once
 
 const testDefaultRegion = "us-west-2"
-const awsParamsPathVar = "TEST_ACC_AWS_PARAMS_PATH"
-
-// 6.1.7
-const deploymentTemplateURL = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.6b728728-d8fa-4eb7-b92d-22d9aee3684c.template"
 
 // Basic test of an AWS array. Spins up a new instance, makes sure it exists, and tests that
 // the parameter and output values are all correctly stored in the Terraform state. Then try
 // an update, confirm that it failed, and make sure the state is still correct
 func TestAccArrayAws_basic(t *testing.T) {
 
-	arrayName := acctest.RandomWithPrefix("tf-test-array")
+	loadAccAwsParams(t)
+	arrayName := acctest.RandomWithPrefix(awsParams.ArrayName)
+	resourceName := "cbs_array_aws.test_array_aws"
 	senderDomain := "example.com"
 	senderDomain2 := "example-invalid-update.com"
-	loadAccAwsParams(t)
-	resourceName := "cbs_array_aws.test_array_aws"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { testAccAWSPreCheck(t) },
@@ -76,7 +64,8 @@ func TestAccArrayAws_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAwsExists(resourceName),
 					testAccCheckAllAttrs(resourceName, arrayName, senderDomain),
-					//resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", awsParams.PureuserPrivateKeyPath),
+					resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", awsParams.PureuserPrivateKeyPath),
+					testAccArrayAwsOptOutDefaultProtectionPolicy(resourceName),
 				),
 			},
 			{
@@ -94,9 +83,9 @@ func TestAccArrayAws_basic(t *testing.T) {
 // Create an array with tags
 func TestAccArrayAws_tags(t *testing.T) {
 
-	arrayName := acctest.RandomWithPrefix("tf-test-array")
-	senderDomain := "example.com"
 	loadAccAwsParams(t)
+	arrayName := acctest.RandomWithPrefix(awsParams.ArrayName)
+	senderDomain := "example.com"
 	resourceName := "cbs_array_aws.test_array_aws"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -109,10 +98,11 @@ func TestAccArrayAws_tags(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAwsExists(resourceName),
 					testAccCheckAllAttrs(resourceName, arrayName, senderDomain),
-					//resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", awsParams.PureuserPrivateKeyPath),
+					resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", awsParams.PureuserPrivateKeyPath),
 					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
 					resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
 					resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
+					testAccArrayAwsOptOutDefaultProtectionPolicy(resourceName),
 				),
 			},
 		},
@@ -120,11 +110,10 @@ func TestAccArrayAws_tags(t *testing.T) {
 }
 
 func TestAccArrayAws_pureuserPrivateKey(t *testing.T) {
-	t.Skip("Deactivation in AWS is disabled")
 
-	arrayName := acctest.RandomWithPrefix("tf-test-array")
-	senderDomain := "example.com"
 	loadAccAwsParams(t)
+	arrayName := acctest.RandomWithPrefix(awsParams.ArrayName)
+	senderDomain := "example.com"
 	resourceName := "cbs_array_aws.test_array_aws"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -139,6 +128,7 @@ func TestAccArrayAws_pureuserPrivateKey(t *testing.T) {
 					testAccCheckAllAttrs(resourceName, arrayName, senderDomain),
 					resource.TestCheckNoResourceAttr(resourceName, "pureuser_private_key_path"),
 					resource.TestCheckResourceAttrSet(resourceName, "pureuser_private_key"),
+					testAccArrayAwsOptOutDefaultProtectionPolicy(resourceName),
 				),
 			},
 		},
@@ -158,20 +148,21 @@ func testAccBasicConfig(name string, senderDomain string) string {
 		deployment_role_arn = "%[4]s"
 
 		alert_recipients = ["user@example.com"]
-		array_model = "V10AR1"
-		license_key = "%[5]s"
+		array_model = "%[5]s"
+		license_key = "%[6]s"
 
-		pureuser_key_pair_name = "%[6]s"
+		pureuser_key_pair_name = "%[7]s"
+		pureuser_private_key_path = "%[8]s"
 
-		system_subnet = "%[8]s"
-		replication_subnet = "%[8]s"
-		iscsi_subnet = "%[8]s"
-		management_subnet = "%[8]s"
+		system_subnet = "%[9]s"
+		replication_subnet = "%[9]s"
+		iscsi_subnet = "%[9]s"
+		management_subnet = "%[9]s"
 
-		replication_security_group = "%[9]s"
-		iscsi_security_group = "%[9]s"
-		management_security_group = "%[9]s"
-	}`, name, senderDomain, deploymentTemplateURL, awsParams.DeploymentRoleArn, awsParams.LicenseKey,
+		replication_security_group = "%[10]s"
+		iscsi_security_group = "%[10]s"
+		management_security_group = "%[10]s"
+	}`, name, senderDomain, awsParams.DeploymentTemplateUrl, awsParams.DeploymentRoleArn, awsParams.ArrayModel, awsParams.LicenseKey,
 		awsParams.PureuserKeyPairName, awsParams.PureuserPrivateKeyPath, awsParams.Subnet, awsParams.SecurityGroup)
 }
 
@@ -188,25 +179,26 @@ func testAccTagsConfig(name string) string {
 		deployment_role_arn = "%[3]s"
 
 		alert_recipients = ["user@example.com"]
-		array_model = "V10AR1"
-		license_key = "%[4]s"
+		array_model = "%[4]s"
+		license_key = "%[5]s"
 
-		pureuser_key_pair_name = "%[5]s"
+		pureuser_key_pair_name = "%[6]s"
+		pureuser_private_key_path = "%[7]s"
 
-		system_subnet = "%[7]s"
-		replication_subnet = "%[7]s"
-		iscsi_subnet = "%[7]s"
-		management_subnet = "%[7]s"
+		system_subnet = "%[8]s"
+		replication_subnet = "%[8]s"
+		iscsi_subnet = "%[8]s"
+		management_subnet = "%[8]s"
 
-		replication_security_group = "%[8]s"
-		iscsi_security_group = "%[8]s"
-		management_security_group = "%[8]s"
+		replication_security_group = "%[9]s"
+		iscsi_security_group = "%[9]s"
+		management_security_group = "%[9]s"
 
 		tags = {
 			foo = "bar"
 			test = "value"
 		}
-	}`, name, deploymentTemplateURL, awsParams.DeploymentRoleArn, awsParams.LicenseKey,
+	}`, name, awsParams.DeploymentTemplateUrl, awsParams.DeploymentRoleArn, awsParams.ArrayModel, awsParams.LicenseKey,
 		awsParams.PureuserKeyPairName, awsParams.PureuserPrivateKeyPath, awsParams.Subnet, awsParams.SecurityGroup)
 }
 
@@ -223,20 +215,23 @@ func testAccPureuserPrivateKeyConfig(name string) string {
 		deployment_role_arn = "%[3]s"
 
 		alert_recipients = ["user@example.com"]
-		array_model = "V10AR1"
-		license_key = "%[4]s"
+		array_model = "%[4]s"
+		license_key = "%[5]s"
 
-		pureuser_key_pair_name = "%[5]s"
+		pureuser_key_pair_name = "%[6]s"
+		pureuser_private_key = <<EOF
+%[7]s
+EOF
 
-		system_subnet = "%[7]s"
-		replication_subnet = "%[7]s"
-		iscsi_subnet = "%[7]s"
-		management_subnet = "%[7]s"
+		system_subnet = "%[8]s"
+		replication_subnet = "%[8]s"
+		iscsi_subnet = "%[8]s"
+		management_subnet = "%[8]s"
 
-		replication_security_group = "%[8]s"
-		iscsi_security_group = "%[8]s"
-		management_security_group = "%[8]s"
-	}`, name, deploymentTemplateURL, awsParams.DeploymentRoleArn, awsParams.LicenseKey,
+		replication_security_group = "%[9]s"
+		iscsi_security_group = "%[9]s"
+		management_security_group = "%[9]s"
+	}`, name, awsParams.DeploymentTemplateUrl, awsParams.DeploymentRoleArn, awsParams.ArrayModel, awsParams.LicenseKey,
 		awsParams.PureuserKeyPairName, awsParams.PureuserPrivateKey, awsParams.Subnet, awsParams.SecurityGroup)
 }
 
@@ -257,9 +252,9 @@ func awsTestRegion() string {
 // Lazy load the AWS param values from the json file specified at TEST_ACC_AWS_PARAMS_PATH.
 func loadAccAwsParams(t *testing.T) {
 	awsParamsConfigure.Do(func() {
-		cfgPath := os.Getenv(awsParamsPathVar)
+		cfgPath := os.Getenv(acceptance.EnvTfAccAwsParamsPath)
 		if cfgPath == "" {
-			t.Fatalf("%s environment variable must be set for acceptance testing", awsParamsPathVar)
+			t.Fatalf("%s environment variable must be set for acceptance testing", acceptance.EnvTfAccAwsParamsPath)
 		}
 		cfgData, err := ioutil.ReadFile(cfgPath)
 		if err != nil {
@@ -275,12 +270,12 @@ func testAccCheckAllAttrs(resourceName string, arrayName string, senderDomain st
 	return resource.ComposeAggregateTestCheckFunc(
 		resource.TestCheckResourceAttr(resourceName, "array_name", arrayName),
 		resource.TestCheckResourceAttr(resourceName, "stack_name", arrayName),
-		resource.TestCheckResourceAttr(resourceName, "deployment_template_url", deploymentTemplateURL),
+		resource.TestCheckResourceAttr(resourceName, "deployment_template_url", awsParams.DeploymentTemplateUrl),
 		resource.TestCheckResourceAttr(resourceName, "deployment_role_arn", awsParams.DeploymentRoleArn),
 		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", senderDomain),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.0", "user@example.com"),
-		resource.TestCheckResourceAttr(resourceName, "array_model", "V10AR1"),
+		resource.TestCheckResourceAttr(resourceName, "array_model", awsParams.ArrayModel),
 		resource.TestCheckResourceAttr(resourceName, "license_key", awsParams.LicenseKey),
 		resource.TestCheckResourceAttr(resourceName, "pureuser_key_pair_name", awsParams.PureuserKeyPairName),
 		resource.TestCheckResourceAttr(resourceName, "system_subnet", awsParams.Subnet),
@@ -357,5 +352,26 @@ func testAccArrayAwsExists(resourceName string) resource.TestCheckFunc {
 		}
 
 		return nil
+	}
+}
+
+// testAccArrayAwsOptOutDefaultProtectionPolicy opts out of the automatic safemode.
+//
+// Starting with 6.3 we have a default pgroup, "pgroup-auto",  which is created
+// automatically and that will contain all the volumes on the array.
+// This is normal and due to the always on safemode feature.
+//
+// In Terraform Acceptance testing, however, we don't want that pgroup and would
+// like to remove it. The presence of the pgroup would've caused the destroy to fail.
+func testAccArrayAwsOptOutDefaultProtectionPolicy(resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("Resource not found: %s", resourceName)
+		}
+
+		return optOutDefaultProtectionPolicy(ctx, rs.Primary.Attributes)
 	}
 }

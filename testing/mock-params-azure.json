@@ -1,4 +1,6 @@
 {
+    "array_name": "mock-array-azure",
+    "array_model": "V10MUR1",
     "resource_group_name": "mock_resource_group_name",
     "location": "eastus2",
     "license_key": "mock_license_key",

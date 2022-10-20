@@ -1,4 +1,6 @@
 {
+    "array_name": "mock-array-aws",
+    "array_model": "V10AR1",
     "deployment_role_arn": "mock_deployment_role_arn",
     "license_key": "mock_license_key",
     "pureuser_key_pair_name": "mock_pureuser_key_pair_name",

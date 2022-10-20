@@ -1,10 +1,9 @@
 package main
 
 import (
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
-
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs"
 )
 
 func main() {

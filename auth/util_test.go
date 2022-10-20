@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/auth"
 	"golang.org/x/crypto/ssh"
 )
 

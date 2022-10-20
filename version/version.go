@@ -18,5 +18,20 @@
 
 package version
 
-// The release version of the provider. TODO PURE-229783 automate setting this to the release version on release
-var ProviderVersion = "dev"
+const InternalProviderVersion = "dev"
+
+// The ProviderVersion will stay 'dev' for internal builds and will be set to
+// proper version on releases
+var ProviderVersion = InternalProviderVersion
+
+// This is used to identify the logs with the git commit that the provider was
+// built from
+var ProviderCommit = ""
+
+// In development we might need more testing options to be enabled so this will
+// define if we are running in development mode or not. The ProviderVersion will
+// be overwritten by the goreleaser to the release tag for dev builds this will
+// stay the default.
+func IsDevelopmentMode() bool {
+	return ProviderVersion == InternalProviderVersion
+}

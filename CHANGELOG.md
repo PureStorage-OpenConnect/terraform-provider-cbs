@@ -1,3 +1,11 @@
+## 0.8.0 (May 15, 2023)
+
+* Added support for Cloud Block Store on Azure deployment for Pure Fusion using the `fusion_sec_identity` parameter, refer to the [documentation](docs/resources/array_azure.md)
+* Added cbs_azure_plans datasource, refer to the [documentation](docs/data-sources/azure_plans.md)
+* Added cbs_fusion_sec_azure resource, refer to the [documentation](docs/resources/fusion_sec_azure.md)
+* Update Purity version of cbs_array_azure to fetch the latest azure release using cbs_azure_plans
+* Update Purity version of cbs_array_aws to 6.4.0
+
 ## 0.7.0 (Oct 19, 2022)
 
 * Update Purity version of cbs_array_azure to 6.3.5

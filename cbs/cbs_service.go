@@ -22,8 +22,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 )
 
 type CbsService struct {

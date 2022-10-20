@@ -1,4 +1,4 @@
-// +build mock
+//go:build mock
 
 /*
 
@@ -27,10 +27,11 @@
 package array
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/mockdb"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/mockdb"
 )
 
 const (
@@ -50,7 +51,7 @@ func buildFAClient(host string, secretPayload string) (FAClientAPI, error) {
 	return nil, nil
 }
 
-func (self *MockFAClient) Deactivate() error {
+func (self *MockFAClient) Deactivate(ctx context.Context) error {
 	if self.Kind == FAClientKindAWS {
 		stack := mockdb.AWSGetHostStack(self.Host)
 		if stack == nil {
