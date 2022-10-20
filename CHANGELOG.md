@@ -1,3 +1,10 @@
+## 0.7.0 (Oct 19, 2022)
+
+* Update Purity version of cbs_array_azure to 6.3.5
+* Update Purity version of cbs_array_aws to 6.2.13
+* Add support for JIT approvals using `jit_approval_group_object_ids` parameter, refer to the [documentation](docs/resources/array_azure.md)
+* Marking `jit_approval` as Deprecated, will be removed in future major release
+
 ## 0.6.0 (Aug 3, 2021)
 
 * Update Purity version of cbs_array_azure from 6.1.7 to 6.1.8

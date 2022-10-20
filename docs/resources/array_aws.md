@@ -27,7 +27,7 @@ resource "cbs_array_aws" "cbs_example" {
 
     array_name = "terraform-example-instance"
 
-    deployment_template_url = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.2713e2df-d62d-495d-2983-cf1246856bb1.template"
+    deployment_template_url = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214/f7a53b584af54f7ba62ef555b11ed859.template"
     deployment_role_arn = "arn:aws:iam::xxxxxxxxxxxx:role/example_role"
 
     log_sender_domain = "example-company.org"

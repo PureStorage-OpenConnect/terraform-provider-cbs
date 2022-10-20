@@ -1,4 +1,4 @@
-// +build !mock
+//go:build !mock
 
 /*
 
@@ -38,6 +38,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
@@ -47,6 +48,7 @@ type awsClient struct {
 	cloudFormation *cloudformation.CloudFormation
 	sts            *sts.STS
 	secretsManager *secretsmanager.SecretsManager
+	ec2Service     *ec2.EC2
 }
 
 func buildAWSClient(region string) (AWSClientAPI, error) {
@@ -61,6 +63,7 @@ func buildAWSClient(region string) (AWSClientAPI, error) {
 	awsClient.cloudFormation = cloudformation.New(sess)
 	awsClient.sts = sts.New(sess)
 	awsClient.secretsManager = secretsmanager.New(sess)
+	awsClient.ec2Service = ec2.New(sess)
 	return &awsClient, nil
 }
 
@@ -86,7 +89,7 @@ func (client *awsClient) WaitUntilStackCreateCompleteWithContext(ctx aws.Context
 func (client *awsClient) WaitUntilStackDeleteCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error {
 	return client.cloudFormation.WaitUntilStackDeleteCompleteWithContext(ctx, input,
 		request.WithWaiterDelay(request.ConstantWaiterDelay(30*time.Second)),
-		request.WithWaiterMaxAttempts(20),
+		request.WithWaiterMaxAttempts(60),
 	)
 }
 
@@ -100,6 +103,14 @@ func (client *awsClient) PutSecretValue(input *secretsmanager.PutSecretValueInpu
 
 func (client *awsClient) GetSecretValue(input *secretsmanager.GetSecretValueInput) (*secretsmanager.GetSecretValueOutput, error) {
 	return client.secretsManager.GetSecretValue(input)
+}
+
+func (client *awsClient) DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error) {
+	return client.ec2Service.DescribeSubnets(input)
+}
+
+func (client *awsClient) ValidateTemplate(input *cloudformation.ValidateTemplateInput) (*cloudformation.ValidateTemplateOutput, error) {
+	return client.cloudFormation.ValidateTemplate(input)
 }
 
 func (client *awsClient) NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {

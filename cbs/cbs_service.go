@@ -19,6 +19,7 @@
 package cbs
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -48,9 +49,9 @@ func (m *CbsService) awsClientService() (cloud.AWSClientAPI, diag.Diagnostics) {
 	return m.AWSClient, nil
 }
 
-func (m *CbsService) azureClientService() (cloud.AzureClientAPI, diag.Diagnostics) {
+func (m *CbsService) azureClientService(ctx context.Context) (cloud.AzureClientAPI, diag.Diagnostics) {
 	if m.AzureClient == nil {
-		azureClient, err := cloud.NewAzureClient(m.azureConfig)
+		azureClient, err := cloud.NewAzureClient(ctx, m.azureConfig)
 		if err != nil {
 			return nil, diag.FromErr(err)
 		}

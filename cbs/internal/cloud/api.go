@@ -26,6 +26,7 @@ import (
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
@@ -40,6 +41,8 @@ type AWSClientAPI interface {
 	GetCallerIdentity(input *sts.GetCallerIdentityInput) (*sts.GetCallerIdentityOutput, error)
 	PutSecretValue(input *secretsmanager.PutSecretValueInput) (*secretsmanager.PutSecretValueOutput, error)
 	GetSecretValue(input *secretsmanager.GetSecretValueInput) (*secretsmanager.GetSecretValueOutput, error)
+	DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
+	ValidateTemplate(input *cloudformation.ValidateTemplateInput) (*cloudformation.ValidateTemplateOutput, error)
 	NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error)
 }
 
@@ -68,6 +71,6 @@ type AzureClientAPI interface {
 	NewFAClient(host string, vaultId string, secretName string) (array.FAClientAPI, error)
 }
 
-func NewAzureClient(config AzureConfig) (AzureClientAPI, error) {
-	return buildAzureClient(config)
+func NewAzureClient(ctx context.Context, config AzureConfig) (AzureClientAPI, error) {
+	return buildAzureClient(ctx, config)
 }

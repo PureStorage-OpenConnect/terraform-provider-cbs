@@ -1,4 +1,4 @@
-// +build !mock
+//go:build !mock
 
 /*
 
@@ -34,6 +34,9 @@ package cloud
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httputil"
+	"os"
 	"time"
 
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
@@ -42,14 +45,59 @@ import (
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/tracing"
 	"github.com/hashicorp/go-azure-helpers/authentication"
 	"github.com/hashicorp/go-azure-helpers/sender"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/tfazurerm"
 )
 
 const azureEnvironment = "public"
+
+// Used to trace Azure API requests
+type tracerTransport struct {
+	tflogCtx context.Context
+	r        http.RoundTripper
+}
+
+func (d *tracerTransport) RoundTrip(h *http.Request) (*http.Response, error) {
+	requestDump, _ := httputil.DumpRequestOut(h, true)
+	tflog.Trace(d.tflogCtx, "Azure HTTP Trace Round Trip", map[string]interface{}{
+		"request": string(requestDump),
+	})
+
+	resp, err := d.r.RoundTrip(h)
+	responseDump, _ := httputil.DumpResponse(resp, true)
+	tflog.Trace(d.tflogCtx, "Azure HTTP Trace Round Trip", map[string]interface{}{
+		"response": string(responseDump),
+		"err":      err,
+	})
+	return resp, err
+}
+
+// Used to trace Azure API requests
+type tracer struct {
+	tflogCtx context.Context
+}
+
+func (m *tracer) NewTransport(base *http.Transport) http.RoundTripper {
+	return &tracerTransport{m.tflogCtx, http.DefaultTransport}
+}
+
+func (m *tracer) StartSpan(ctx context.Context, name string) context.Context {
+	tflog.Trace(ctx, "Azure HTTP Trace Start Span", map[string]interface{}{"name": name})
+	m.tflogCtx = ctx
+	return ctx
+}
+
+func (m *tracer) EndSpan(ctx context.Context, httpStatusCode int, err error) {
+	tflog.Trace(ctx, "Azure HTTP Trace End Span", map[string]interface{}{
+		"status_code": httpStatusCode,
+		"err":         err,
+	})
+}
 
 type azureClient struct {
 	applicationsClient    managedapplications.ApplicationsClient
@@ -58,7 +106,11 @@ type azureClient struct {
 	vaultSecretClient     vaultSecret.BaseClient
 }
 
-func buildAzureClient(userConfig AzureConfig) (AzureClientAPI, error) {
+func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientAPI, error) {
+
+	if os.Getenv("PS_HTTP_TRACE_LOGGING") != "" {
+		tracing.Register(&tracer{ctx})
+	}
 
 	// Heavily inspired by https://github.com/terraform-providers/terraform-provider-azurerm/blob/dfba957d737fa474870eebafedb9326edf899858/azurerm/internal/clients/builder.go
 	// and https://github.com/terraform-providers/terraform-provider-azurerm/blob/d155f299d12e6e2440f42d7c8695569f8256b9c6/azurerm/internal/services/keyvault/client/client.go

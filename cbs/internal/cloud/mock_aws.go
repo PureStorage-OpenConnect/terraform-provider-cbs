@@ -1,4 +1,4 @@
-// +build mock
+//go:build mock
 
 /*
 
@@ -37,9 +37,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
 	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/mockdb"
 )
@@ -144,13 +144,7 @@ func (m *mockAWSClient) GetCallerIdentity(input *sts.GetCallerIdentityInput) (*s
 }
 
 func (m *mockAWSClient) PutSecretValue(input *secretsmanager.PutSecretValueInput) (*secretsmanager.PutSecretValueOutput, error) {
-	mockBootstrap := auth.NewBootstrapService()
-	mockSecret, _ := mockBootstrap.GenerateSecretPayload("mock_host", []byte("mock_key"))
-	if mockdb.AWSGetSecret(*input.SecretId) != nil {
-		return nil, fmt.Errorf("Secret with Id `%s` already exists", *input.SecretId)
-	}
-	mockdb.AWSSetSecret(*input.SecretId, string(mockSecret))
-
+	mockdb.AWSSetSecret(*input.SecretId, *input.SecretString)
 	return &secretsmanager.PutSecretValueOutput{ARN: input.SecretId}, nil
 }
 
@@ -167,6 +161,26 @@ func (m *mockAWSClient) GetSecretValue(input *secretsmanager.GetSecretValueInput
 		return nil, fmt.Errorf("Secret with Id `%s` does not exist", *input.SecretId)
 	}
 	return &secretsmanager.GetSecretValueOutput{SecretString: secret}, nil
+}
+
+func (m *mockAWSClient) DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error) {
+	return &ec2.DescribeSubnetsOutput{
+		Subnets: []*ec2.Subnet{
+			&ec2.Subnet{
+				AvailabilityZone: aws.String("mock-az"),
+			},
+		},
+	}, nil
+}
+
+func (m *mockAWSClient) ValidateTemplate(input *cloudformation.ValidateTemplateInput) (*cloudformation.ValidateTemplateOutput, error) {
+	return &cloudformation.ValidateTemplateOutput{
+		Parameters: []*cloudformation.TemplateParameter{
+			&cloudformation.TemplateParameter{
+				ParameterKey: aws.String("AvailabilityZone"),
+			},
+		},
+	}, nil
 }
 
 func (m *mockAWSClient) NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {
