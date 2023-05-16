@@ -19,7 +19,9 @@ builds:
   flags:
     - -trimpath
   ldflags:
-    - '-s -w -X github.dev.purestorage.com/FlashArray/terraform-provider-cbs/version.ProviderVersion={{.Version}}'
+    - "-s -w"
+    - "-X github.com/PureStorage-OpenConnect/terraform-provider-cbs/version.ProviderVersion={{.Version}}"
+    - "-X github.com/PureStorage-OpenConnect/terraform-provider-cbs/version.ProviderCommit={{.ShortCommit}}"
   goos:
     - freebsd
     - windows

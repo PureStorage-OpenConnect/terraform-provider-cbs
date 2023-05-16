@@ -25,6 +25,7 @@ resource "cbs_array_aws" "aws_instance" {
     license_key = var.license_key
 
     pureuser_key_pair_name = var.key_name
+    pureuser_private_key_path = var.key_file_path
 
     system_subnet = var.system_subnet
     replication_subnet = var.rep_subnet

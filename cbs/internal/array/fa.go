@@ -1,3 +1,4 @@
+//go:build !mock
 // +build !mock
 
 /*
@@ -26,11 +27,11 @@ import (
 	"fmt"
 	"time"
 
-	bootstrapauth "github.dev.purestorage.com/FlashArray/terraform-provider-cbs/auth"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient/2.4/client"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient/2.4/client/arrays"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient/auth"
+	bootstrapauth "github.com/PureStorage-OpenConnect/terraform-provider-cbs/auth"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient/2.4/client"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient/2.4/client/arrays"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient/auth"
 )
 
 const defaultTimeout = 30 * time.Second
@@ -60,8 +61,8 @@ func buildFAClient(host string, secretPayload string) (FAClientAPI, error) {
 	return &faClient{lowerClient, host}, nil
 }
 
-func (c *faClient) Deactivate() error {
-	tempCtx, cancel := context.WithTimeout(context.TODO(), defaultTimeout)
+func (c *faClient) Deactivate(ctx context.Context) error {
+	tempCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 	postFactoryResetTokenParams := arrays.NewPostAPI24ArraysFactoryResetTokenParamsWithContext(tempCtx)
 	resp, err := c.Arrays.PostAPI24ArraysFactoryResetToken(postFactoryResetTokenParams)

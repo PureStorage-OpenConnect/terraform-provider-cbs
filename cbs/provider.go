@@ -22,9 +22,11 @@ import (
 	"context"
 	"os"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/version"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 )
 
 const (
@@ -94,8 +96,12 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"cbs_array_aws":   resourceArrayAWS(),
-			"cbs_array_azure": resourceArrayAzure(),
+			"cbs_array_aws":        resourceArrayAWS(),
+			"cbs_array_azure":      resourceArrayAzure(),
+			"cbs_fusion_sec_azure": resourceFusionSECAzure(),
+		},
+		DataSourcesMap: map[string]*schema.Resource{
+			"cbs_azure_plans": dataSourceAzurePlans(),
 		},
 		ConfigureContextFunc: configureProvider,
 	}
@@ -104,6 +110,11 @@ func Provider() *schema.Provider {
 func configureProvider(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var cbsService CbsService
 	var diags diag.Diagnostics
+
+	tflog.Info(ctx, "Configuring Terraform Provider CBS", map[string]interface{}{
+		"version": version.ProviderVersion,
+		"commit":  version.ProviderCommit,
+	})
 
 	cbsService.awsRegionStr = awsRegion(d)
 

@@ -95,9 +95,11 @@ resource "cbs_array_azure" "azure_instance" {
 - `alert_recipients` (Optional) - List of email addresses to receive alerts.
 - `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1` or `V20MUR1`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
+- `fusion_sec_identity` (Optional) - Input that denotes the identity of a Fusion Storage Endpoint Collection, obtained during Azure Portal GUI or CLI deployment.
+Required when the array is deployed for use in a Fusion cluster.
 - `iscsi_subnet` (Required) - Subnet containing the iSCSI interfaces on the array.
-- `jit_approval` (Optional, **Deprecated**) - A Just In Time remote access configuration block. One of `jit_approval` or `jit_approval_group_object_ids` is required. See [below for nested schema](#nestedblock--jit_approval).
-- `jit_approval_group_object_ids` (Optional) - A list of Azure group object IDs for people who are allowed to approve JIT requests. When used the maximum possible duration of a JIT access request will be set to `PT8H`. One of `jit_approval` or `jit_approval_group_object_ids` is required.
+- `jit_approval_group_object_ids` (Required) - A list of Azure group object IDs for people who are allowed to approve JIT requests. When used the maximum possible duration of a JIT access request will be set to `PT8H`.
+The [azuread_group](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/data-sources/group) datasource can be used to look up the group_id from the name of the group.
 - `key_vault_id` (Required) - Key Vault where provider stores sensitive information.
 - `license_key` (Required) - Pure Storage-provided license key.
 - `location` (Required) - Azure location in which to deploy the array.
@@ -112,23 +114,6 @@ resource "cbs_array_azure" "azure_instance" {
 - `tags` (Optional) - A list of tags to apply to all resources in the managed application.
 - `virtual_network_id` (Required) - The ID of the virtual network that contains the network interfaces of the array.
 - `zone` (Required) - The Availability Zone within the deployment location.
-
-
-<a id="nestedblock--jit_approval"></a>
-### Nested Schema for `jit_approval`
-
-JIT is always enabled in manual mode for CBS instances. Users are able to specify the groups that
-can approve JIT access requests as the maximum duration of JIT access requests.
-
-- `approvers` (Required) - A JIT approvers configuration block. See [below for nested schema](#nestedblock--jit_approval--approvers).
-- `activation_maximum_duration` (Optional) - The maximum possible duration of a JIT access request. The possible values are
-`PT1H`, `PT2H`, `PT3H`, `PT4H`, `PT5H`, `PT6H`, `PT7H`, and `PT8H`. Defaults to `PT8H`.
-
-
-<a id="nestedblock--jit_approval--approvers"></a>
-### Nested Schema for `jit_approval.approvers`
-
-- `groups` (Required) - A list of Azure Active Directory groups that enable their users to approve JIT access requests.
 
 
 <a id="nestedblock--plan"></a>

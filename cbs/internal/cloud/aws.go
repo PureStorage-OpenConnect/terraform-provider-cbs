@@ -32,8 +32,10 @@
 package cloud
 
 import (
+	"context"
 	"time"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -41,7 +43,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
 )
 
 type awsClient struct {
@@ -75,10 +76,6 @@ func (client *awsClient) DescribeStacks(input *cloudformation.DescribeStacksInpu
 	return client.cloudFormation.DescribeStacks(input)
 }
 
-func (client *awsClient) DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error) {
-	return client.cloudFormation.DeleteStack(input)
-}
-
 func (client *awsClient) WaitUntilStackCreateCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error {
 	return client.cloudFormation.WaitUntilStackCreateCompleteWithContext(ctx, input,
 		request.WithWaiterDelay(request.ConstantWaiterDelay(30*time.Second)),
@@ -89,7 +86,7 @@ func (client *awsClient) WaitUntilStackCreateCompleteWithContext(ctx aws.Context
 func (client *awsClient) WaitUntilStackDeleteCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error {
 	return client.cloudFormation.WaitUntilStackDeleteCompleteWithContext(ctx, input,
 		request.WithWaiterDelay(request.ConstantWaiterDelay(30*time.Second)),
-		request.WithWaiterMaxAttempts(60),
+		request.WithWaiterMaxAttempts(80),
 	)
 }
 
@@ -113,11 +110,11 @@ func (client *awsClient) ValidateTemplate(input *cloudformation.ValidateTemplate
 	return client.cloudFormation.ValidateTemplate(input)
 }
 
-func (client *awsClient) NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {
+func (client *awsClient) NewFAClient(ctx context.Context, host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {
 	secretInput := &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(string(adminSecretsManagerArn)),
 	}
-	result, err := client.GetSecretValue(secretInput)
+	result, err := client.secretsManager.GetSecretValueWithContext(ctx, secretInput)
 	if err != nil {
 		return nil, err
 	}

@@ -28,42 +28,26 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/acceptance"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
-type cbsAzureParams struct {
-	PlanName               string `json:"plan_name"`
-	PlanProduct            string `json:"plan_product"`
-	PlanPublisher          string `json:"plan_publisher"`
-	PlanVersion            string `json:"plan_version"`
-	ResourceGroupName      string `json:"resource_group_name"`
-	Location               string `json:"location"`
-	LicenseKey             string `json:"license_key"`
-	PureuserPrivateKeyPath string `json:"pureuser_private_key_path"`
-	KeyvaultId             string `json:"keyvault_id"`
-	ManagementSubnet       string `json:"management_subnet"`
-	ISCSISubnet            string `json:"iscsi_subnet"`
-	ReplicationSubnet      string `json:"replication_subnet"`
-	SystemSubnet           string `json:"system_subnet"`
-	VirtualNetworkId       string `json:"virtual_network_id"`
-	JitGroup               string `json:"jit_group"`
-	JitGroupID             string `json:"jit_group_id"`
-}
-
-const azureParamsPathVar = "TEST_ACC_AZURE_PARAMS_PATH"
-
-var cbsAzureParam cbsAzureParams
+var cbsAzureParam acceptance.AccTestCbsAzureParams
 var azureParamsConfigure sync.Once
 
 func TestAccArrayAzure_basic(t *testing.T) {
+	loadAccAzureParams(t)
 
-	arrayName := acctest.RandomWithPrefix("tf-test-array-azure")
+	if os.Getenv(acceptance.EnvTfAccAzureSkipMarketplace) != "" {
+		t.Skipf("Skipping acc test due to env variable '%s'", acceptance.EnvTfAccAzureSkipMarketplace)
+	}
+
+	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
 	resourceName := "cbs_array_azure.test_array_azure"
 	orgDomain := "example.com"
 	orgDomain2 := "example-invalid-update.com"
-	loadAccAzureParams(t)
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProviderFactories: testAccProvidersFactory,
@@ -73,7 +57,8 @@ func TestAccArrayAzure_basic(t *testing.T) {
 				Config: testAccAzureConfig(arrayName, orgDomain, false),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureAllAttrs(resourceName, arrayName, orgDomain),
+					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
+					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
 				),
 			},
 			{
@@ -81,14 +66,134 @@ func TestAccArrayAzure_basic(t *testing.T) {
 				ExpectError: regexp.MustCompile("Updates are not supported."),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureAllAttrs(resourceName, arrayName, orgDomain),
+					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
 				),
 			},
 		},
 	})
 }
 
-func testAccAzureConfig(name string, orgDomain string, oldJit bool) string {
+func TestAccArrayAzure_basicFusion(t *testing.T) {
+	loadAccAzureParams(t)
+
+	if os.Getenv(acceptance.EnvTfAccAzureSkipMarketplace) != "" {
+		t.Skipf("Skipping acc tests due to env variable '%s'", acceptance.EnvTfAccAzureSkipMarketplace)
+	}
+
+	if cbsAzureParam.FusionSECIdentity == "" {
+		t.Skip("Skipping acc test as fusion_sec_identity is not set in the param file")
+	}
+
+	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
+	resourceName := "cbs_array_azure.test_array_azure"
+	orgDomain := "example.com"
+	orgDomain2 := "example-invalid-update.com"
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      testAccCheckArrayAzureDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureConfig(arrayName, orgDomain, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
+					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
+				),
+			},
+			{
+				Config:      testAccAzureConfig(arrayName, orgDomain2, true),
+				ExpectError: regexp.MustCompile("Updates are not supported."),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
+				),
+			},
+		},
+	})
+}
+
+func TestAccArrayAzure_basicAppId(t *testing.T) {
+	loadAccAzureParams(t)
+
+	if cbsAzureParam.AppDefinitionId == "" {
+		t.Skip("Skipping acc test due to app_definition_id is not set in the param file")
+	}
+
+	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
+	resourceName := "cbs_array_azure.test_array_azure"
+	orgDomain := "example.com"
+	orgDomain2 := "example-invalid-update.com"
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      testAccCheckArrayAzureDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureConfigAppId(arrayName, orgDomain, false),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
+					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
+				),
+			},
+			{
+				Config:      testAccAzureConfigAppId(arrayName, orgDomain2, false),
+				ExpectError: regexp.MustCompile("Updates are not supported."),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
+				),
+			},
+		},
+	})
+}
+
+func TestAccArrayAzure_basicAppIdFusion(t *testing.T) {
+	loadAccAzureParams(t)
+
+	if cbsAzureParam.AppDefinitionId == "" {
+		t.Skip("Skipping acc test due to app_definition_id is not set in the param file")
+	}
+
+	if os.Getenv(acceptance.EnvTfAccAzureSkipFusionAppId) != "" {
+		t.Skipf("Skipping acc tests due to env variable '%s'", acceptance.EnvTfAccAzureSkipFusionAppId)
+	}
+
+	if cbsAzureParam.FusionSECIdentity == "" {
+		t.Skip("Skipping acc test as fusion_sec_identity is not set in the param file")
+	}
+
+	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
+	resourceName := "cbs_array_azure.test_array_azure"
+	orgDomain := "example.com"
+	orgDomain2 := "example-invalid-update.com"
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProviderFactories: testAccProvidersFactory,
+		CheckDestroy:      testAccCheckArrayAzureDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureConfigAppId(arrayName, orgDomain, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
+					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
+				),
+			},
+			{
+				Config:      testAccAzureConfigAppId(arrayName, orgDomain2, true),
+				ExpectError: regexp.MustCompile("Updates are not supported."),
+				Check: resource.ComposeTestCheckFunc(
+					testAccArrayAzureExists(resourceName),
+					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
+				),
+			},
+		},
+	})
+}
+
+func testAccAzureConfig(name string, orgDomain string, fusionArray bool) string {
 	planHCL := ""
 	if cbsAzureParam.PlanName != "" ||
 		cbsAzureParam.PlanProduct != "" ||
@@ -109,27 +214,13 @@ func testAccAzureConfig(name string, orgDomain string, oldJit bool) string {
 		)
 	}
 
-	jitHCL := fmt.Sprintf(`
-		jit_approval_group_object_ids = [
-				"%s",
-		]
-	`, cbsAzureParam.JitGroupID)
-	if oldJit {
-		jitHCL = fmt.Sprintf(`
-			jit_approval {
-				activation_maximum_duration = "PT8H"
-				approvers {
-					groups = [
-						"%s",
-					]
-				}
-			}
-		`, cbsAzureParam.JitGroup)
+	fusionHCL := ""
+	if fusionArray {
+		fusionHCL = fmt.Sprintf(`fusion_sec_identity = "%s"`, cbsAzureParam.FusionSECIdentity)
 	}
 
 	return fmt.Sprintf(`
 	resource "cbs_array_azure" "test_array_azure" {
-		%[14]s
 		array_name = "%[1]s"
 		log_sender_domain = "%[2]s"
 		resource_group_name = "%[3]s"
@@ -144,10 +235,16 @@ func testAccAzureConfig(name string, orgDomain string, oldJit bool) string {
 		key_vault_id = "%[12]s"
 
 		alert_recipients = ["user@example.com"]
-		array_model = "V10MUR1"
+		array_model = "%[13]s"
 		zone = 3
 
-		%[13]s
+		%[14]s
+
+		jit_approval_group_object_ids = [
+				"%[15]s",
+		]
+
+		%[16]s
 
 		tags = {
 			foo = "bar"
@@ -155,15 +252,53 @@ func testAccAzureConfig(name string, orgDomain string, oldJit bool) string {
 		}
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, jitHCL, planHCL)
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.JitGroupID, planHCL)
+}
+
+func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) string {
+	fusionHCL := ""
+	if fusionArray {
+		fusionHCL = fmt.Sprintf(`fusion_sec_identity = "%s"`, cbsAzureParam.FusionSECIdentity)
+	}
+
+	return fmt.Sprintf(`
+	resource "cbs_array_azure" "test_array_azure" {
+		array_name = "%[1]s"
+		log_sender_domain = "%[2]s"
+		resource_group_name = "%[3]s"
+		license_key = "%[4]s"
+		pureuser_private_key_path = "%[5]s"
+		system_subnet = "%[6]s"
+		replication_subnet = "%[7]s"
+		iscsi_subnet = "%[8]s"
+		management_subnet = "%[9]s"
+		virtual_network_id = "%[10]s"
+		location = "%[11]s"
+		key_vault_id = "%[12]s"
+
+		alert_recipients = ["user@example.com"]
+		array_model = "%[13]s"
+		zone = 3
+
+		%[14]s
+
+		app_definition_id = "%[15]s"
+
+		tags = {
+			foo = "bar"
+			test = "value"
+		}
+	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
+		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.AppDefinitionId)
 }
 
 // Lazy load the Azure param values from the json file specified at TEST_ACC_AZURE_PARAMS_PATH.
 func loadAccAzureParams(t *testing.T) {
 	azureParamsConfigure.Do(func() {
-		cfgPath := os.Getenv(azureParamsPathVar)
+		cfgPath := os.Getenv(acceptance.EnvTfAccAzureParamsPath)
 		if cfgPath == "" {
-			t.Fatalf("%s environment variable must be set for acceptance testing", azureParamsPathVar)
+			t.Fatalf("%s environment variable must be set for acceptance testing", acceptance.EnvTfAccAzureParamsPath)
 		}
 		cfgData, err := ioutil.ReadFile(cfgPath)
 		if err != nil {
@@ -229,67 +364,50 @@ func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
 	}
 }
 
-func testAccCheckAzureAllAttrs(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
+func testAccCheckAzureBasicCheck(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
 	return resource.ComposeAggregateTestCheckFunc(
-		resource.TestCheckResourceAttr(resourceName, "array_name", arrayName),
-		resource.TestCheckResourceAttr(resourceName, "location", cbsAzureParam.Location),
-		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
-		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
-		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
-		resource.TestCheckResourceAttr(resourceName, "alert_recipients.#", "1"),
-		resource.TestCheckResourceAttr(resourceName, "alert_recipients.0", "user@example.com"),
-		resource.TestCheckResourceAttr(resourceName, "array_model", "V10MUR1"),
-		resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", cbsAzureParam.PureuserPrivateKeyPath),
-		resource.TestCheckResourceAttr(resourceName, "system_subnet", cbsAzureParam.SystemSubnet),
-		resource.TestCheckResourceAttr(resourceName, "replication_subnet", cbsAzureParam.ReplicationSubnet),
-		resource.TestCheckResourceAttr(resourceName, "iscsi_subnet", cbsAzureParam.ISCSISubnet),
-		resource.TestCheckResourceAttr(resourceName, "management_subnet", cbsAzureParam.ManagementSubnet),
-		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
-		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
+		testAccCheckAzureCommonAttrsCheck(resourceName, arrayName, orgDomain),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval_group_object_ids.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "jit_approval_group_object_ids.0", cbsAzureParam.JitGroupID),
-		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
-		resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
-		resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
-		resource.TestCheckResourceAttrSet(resourceName, "application_name"),
-		resource.TestCheckResourceAttrSet(resourceName, "managed_resource_group_name"),
-		resource.TestCheckResourceAttrSet(resourceName, "ct0_name"),
-		resource.TestCheckResourceAttrSet(resourceName, "ct1_name"),
-		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint"),
-		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint_ct0"),
-		resource.TestCheckResourceAttrSet(resourceName, "management_endpoint_ct1"),
-		resource.TestCheckResourceAttrSet(resourceName, "replication_endpoint_ct0"),
-		resource.TestCheckResourceAttrSet(resourceName, "replication_endpoint_ct1"),
-		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct0"),
-		resource.TestCheckResourceAttrSet(resourceName, "iscsi_endpoint_ct1"),
+		testAccCheckAzureOutputSetCheck(resourceName),
 	)
 }
 
-func testAccCheckAzureBasicOldJitApprovalAttrs(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
+func testAccCheckAzureAppIdCheck(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
+	return resource.ComposeAggregateTestCheckFunc(
+		testAccCheckAzureCommonAttrsCheck(resourceName, arrayName, orgDomain),
+		resource.TestCheckResourceAttr(resourceName, "jit_approval_group_object_ids.#", "0"),
+		testAccCheckAzureOutputSetCheck(resourceName),
+	)
+}
+
+// Check for common parameters that are same in all of the test cases
+func testAccCheckAzureCommonAttrsCheck(resourceName string, arrayName string, orgDomain string) resource.TestCheckFunc {
 	return resource.ComposeAggregateTestCheckFunc(
 		resource.TestCheckResourceAttr(resourceName, "array_name", arrayName),
-		resource.TestCheckResourceAttr(resourceName, "location", cbsAzureParam.Location),
-		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
-		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
-		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
+		resource.TestCheckResourceAttr(resourceName, "array_model", cbsAzureParam.ArrayModel),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.#", "1"),
 		resource.TestCheckResourceAttr(resourceName, "alert_recipients.0", "user@example.com"),
-		resource.TestCheckResourceAttr(resourceName, "array_model", "V10MUR1"),
+		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
+		resource.TestCheckResourceAttr(resourceName, "location", cbsAzureParam.Location),
+		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
 		resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", cbsAzureParam.PureuserPrivateKeyPath),
+		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
+		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
+		resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
+		resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
+		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
+		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
 		resource.TestCheckResourceAttr(resourceName, "system_subnet", cbsAzureParam.SystemSubnet),
 		resource.TestCheckResourceAttr(resourceName, "replication_subnet", cbsAzureParam.ReplicationSubnet),
 		resource.TestCheckResourceAttr(resourceName, "iscsi_subnet", cbsAzureParam.ISCSISubnet),
 		resource.TestCheckResourceAttr(resourceName, "management_subnet", cbsAzureParam.ManagementSubnet),
-		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
-		resource.TestCheckResourceAttr(resourceName, "key_vault_id", cbsAzureParam.KeyvaultId),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.#", "1"),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.#", "1"),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.activation_maximum_duration", "PT8H"),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.0.groups.#", "1"),
-		resource.TestCheckResourceAttr(resourceName, "jit_approval.0.approvers.0.groups.0", cbsAzureParam.JitGroup),
-		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
-		resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
-		resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
+	)
+}
+
+// Check that all the output parameters were set
+func testAccCheckAzureOutputSetCheck(resourceName string) resource.TestCheckFunc {
+	return resource.ComposeAggregateTestCheckFunc(
 		resource.TestCheckResourceAttrSet(resourceName, "application_name"),
 		resource.TestCheckResourceAttrSet(resourceName, "managed_resource_group_name"),
 		resource.TestCheckResourceAttrSet(resourceName, "ct0_name"),
@@ -304,33 +422,23 @@ func testAccCheckAzureBasicOldJitApprovalAttrs(resourceName string, arrayName st
 	)
 }
 
-func TestAccArrayAzure_OldJitApproval(t *testing.T) {
+// testAccArrayAzureOptOutDefaultProtectionPolicy opts out of the automatic safemode.
+//
+// Starting with 6.3 we have a default pgroup, "pgroup-auto",  which is created
+// automatically and that will contain all the volumes on the array.
+// This is normal and due to the always on safemode feature.
+//
+// In Terraform Acceptance testing, however, we don't want that pgroup and would
+// like to remove it. The presence of the pgroup would've caused the destroy to fail.
+func testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
 
-	arrayName := acctest.RandomWithPrefix("tf-test-array-azure")
-	resourceName := "cbs_array_azure.test_array_azure"
-	orgDomain := "example.com"
-	orgDomain2 := "example-invalid-update.com"
-	loadAccAzureParams(t)
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("Managed Application not found: %s", resourceName)
+		}
 
-	resource.ParallelTest(t, resource.TestCase{
-		ProviderFactories: testAccProvidersFactory,
-		CheckDestroy:      testAccCheckArrayAzureDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAzureConfig(arrayName, orgDomain, true),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureBasicOldJitApprovalAttrs(resourceName, arrayName, orgDomain),
-				),
-			},
-			{
-				Config:      testAccAzureConfig(arrayName, orgDomain2, true),
-				ExpectError: regexp.MustCompile("Updates are not supported."),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureBasicOldJitApprovalAttrs(resourceName, arrayName, orgDomain),
-				),
-			},
-		},
-	})
+		return optOutDefaultProtectionPolicy(ctx, rs.Primary.Attributes)
+	}
 }

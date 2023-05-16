@@ -24,9 +24,10 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/acceptance"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/cloud"
 
 	"github.com/stretchr/testify/require"
 )
@@ -158,6 +159,7 @@ func testInvalidAWSArrayConfig() string {
 		license_key = "foo"
 
 		pureuser_key_pair_name = "foo"
+		pureuser_private_key_path = "path/to/foo"
 
 		system_subnet = "subnet-foo"
 		replication_subnet = "subnet-foo"
@@ -176,8 +178,8 @@ func testAccUnsetAWSPreCheck(t *testing.T) {
 }
 
 func TestAccProvider_azureCLIAuth(t *testing.T) {
-	if os.Getenv("MOCK_OUT_DIR") != "" {
-		t.Skip() // TODO:This requires Azure credentials in container, haven't set that up yet
+	if os.Getenv(acceptance.EnvTfAccSkipUserPrincipalAuth) != "" {
+		t.Skip("Skipping due to Service Principal Auth not supporting this testcase")
 	}
 
 	if os.Getenv("TF_ACC") == "" {
@@ -236,6 +238,7 @@ func TestProvider_HasExpectedResources(t *testing.T) {
 	expectedResources := []string{
 		"cbs_array_aws",
 		"cbs_array_azure",
+		"cbs_fusion_sec_azure",
 	}
 
 	resources := testAccProvider.ResourcesMap

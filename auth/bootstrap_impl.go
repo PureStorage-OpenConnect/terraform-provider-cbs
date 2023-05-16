@@ -26,6 +26,10 @@ func (b *bootstrapService) GenerateSecretPayload(ctx context.Context, host strin
 	return generateSecretPayloadReal(ctx, host, pureuserPrivateKey)
 }
 
+func (b *bootstrapService) OptOutDefaultProtectionPolicy(ctx context.Context, host string, pureuserPrivateKey []byte) error {
+	return optOutDefaultProtectionPolicyReal(ctx, host, pureuserPrivateKey)
+}
+
 type bootstrapService struct{}
 
 func NewBootstrapService() Bootstrapper {

@@ -18,9 +18,11 @@
 
 package array
 
+import "context"
+
 // mockable wrapper around the full REST API that is exposed to the terraform resources
 type FAClientAPI interface {
-	Deactivate() error
+	Deactivate(ctx context.Context) error
 }
 
 func NewFAClient(host string, secretPayload string) (FAClientAPI, error) {

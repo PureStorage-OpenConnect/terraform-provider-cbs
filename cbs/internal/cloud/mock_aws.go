@@ -27,6 +27,7 @@
 package cloud
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
@@ -35,13 +36,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/mockdb"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/internal/mockdb"
 )
 
 // Hash the stack name, use it for stack id
@@ -115,21 +116,6 @@ func (m *mockAWSClient) DescribeStacks(input *cloudformation.DescribeStacksInput
 	return &cloudformation.DescribeStacksOutput{Stacks: []*cloudformation.Stack{stack}}, nil
 }
 
-func (m *mockAWSClient) DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error) {
-	stack := mockdb.AWSGetStack(*input.StackName)
-	if stack == nil {
-		return nil, fmt.Errorf("Stack with name or Id `%s` does not exist", *input.StackName)
-	}
-	mockdb.AWSDelStack(*stack.StackId)
-	mockdb.AWSDelStack(*stack.StackName)
-
-	stack.StackStatus = aws.String("DELETE_COMPLETE")
-	mockdb.AWSSetStack(*stack.StackId, "", *stack)
-	mockdb.AWSSetStack(*stack.StackName, "", *stack)
-
-	return &cloudformation.DeleteStackOutput{}, nil
-}
-
 func (m *mockAWSClient) WaitUntilStackCreateCompleteWithContext(ctx aws.Context, input *cloudformation.DescribeStacksInput) error {
 	return nil
 }
@@ -183,7 +169,7 @@ func (m *mockAWSClient) ValidateTemplate(input *cloudformation.ValidateTemplateI
 	}, nil
 }
 
-func (m *mockAWSClient) NewFAClient(host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {
+func (m *mockAWSClient) NewFAClient(ctx context.Context, host string, adminSecretsManagerArn string) (array.FAClientAPI, error) {
 	return &array.MockFAClient{Host: host, Kind: array.FAClientKindAWS}, nil
 }
 

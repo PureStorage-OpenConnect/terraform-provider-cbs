@@ -27,7 +27,7 @@ resource "cbs_array_aws" "cbs_example" {
 
     array_name = "terraform-example-instance"
 
-    deployment_template_url = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214/f7a53b584af54f7ba62ef555b11ed859.template"
+    deployment_template_url = "https://s3.amazonaws.com/awsmp-fulfillment-cf-templates-prod/4ea2905b-7939-4ee0-a521-d5c2fcb41214.e6360126-9b9d-4428-a532-e4d22aef7a40.template"
     deployment_role_arn = "arn:aws:iam::xxxxxxxxxxxx:role/example_role"
 
     log_sender_domain = "example-company.org"
@@ -36,6 +36,7 @@ resource "cbs_array_aws" "cbs_example" {
     license_key = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx"
 
     pureuser_key_pair_name = "cbs_key"
+    pureuser_private_key_path = "/path/to/cbs_key"
 
     system_subnet = "subnet-xxxxxxxxxxxxxxxxx"
     replication_subnet = "subnet-xxxxxxxxxxxxxxxxx"
@@ -67,6 +68,8 @@ resource "cbs_array_aws" "cbs_example" {
 - `management_security_group` (Required) - Security Group to apply to management interfaces. Must allow inbound TCP traffic on ports 22, 80, 8084, and inbound/outbound on port 443.
 - `management_subnet` (Required) - Subnet in which to launch management interfaces.
 - `pureuser_key_pair_name` (Required) - Name of an existing EC2 KeyPair to enable SSH access to the controllers.
+- `pureuser_private_key_path` (Optional) - File path of the private key to enable SSH access to the controllers. You must specify one `pureuser_private_key_path` or one `pureuser_private_key`.
+- `pureuser_private_key` (Optional) - Text content of the private key to enable SSH access to the controllers. You must specify one `pureuser_private_key_path` or one `pureuser_private_key`.
 - `replication_security_group` (Required) - Security Group to apply to replication interfaces. Must allow inbound and outbound TCP traffic on ports 8117.
 - `replication_subnet` (Required) - Subnet in which to launch replication interfaces.
 - `system_subnet` (Required) - Subnet in which to launch system interfaces (internal to the array).

@@ -3,8 +3,8 @@ package faclient_test
 import (
 	"testing"
 
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient"
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/cbs/internal/array/faclient/auth"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array/faclient/auth"
 )
 
 const testPrivateKey = `

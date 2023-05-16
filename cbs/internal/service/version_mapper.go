@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.dev.purestorage.com/FlashArray/terraform-provider-cbs/version"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/version"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/go-autorest/autorest/to"

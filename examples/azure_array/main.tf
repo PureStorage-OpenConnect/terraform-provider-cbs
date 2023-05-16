@@ -9,6 +9,8 @@ terraform {
 
 provider "cbs" {}
 
+data "cbs_azure_plans" "azure_plans" {}
+
 resource "cbs_array_azure" "azure_instance" {
 
     array_name = var.array_name
@@ -32,11 +34,21 @@ resource "cbs_array_azure" "azure_instance" {
 
     jit_approval_group_object_ids = var.jit_group_ids
     plan {
-        name = var.plan_name
-        product = var.plan_product
-        publisher = var.plan_publisher
-        version = var.plan_version
+        name = data.cbs_azure_plans.azure_plans.plans[0].name
+        product = data.cbs_azure_plans.azure_plans.plans[0].product
+        publisher = data.cbs_azure_plans.azure_plans.plans[0].publisher
+        version = data.cbs_azure_plans.azure_plans.plans[0].version
     }
+
+    lifecycle {
+        ignore_changes = [
+            plan,
+        ]
+    }
+}
+
+output "cbs_azure_available_plans" {
+    value = data.cbs_azure_plans.azure_plans.plans
 }
 
 output "cbs_mgmt_endpoint" {

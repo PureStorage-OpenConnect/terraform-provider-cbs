@@ -1,0 +1,10 @@
+{
+	"fusion_sec_name": "mock-fusion-sec-azure",
+	"resource_group_name": "mock_resource_group_name",
+	"location": "eastus2",
+	"load_balancer_network_rg": "mock_vnet_resource_group",
+	"load_balancer_network_name": "mock_vnet_name",
+	"load_balancer_subnet": "mock_subnet_name",
+	"jit_group": "00000000-0000-0000-0001-000000000000",
+	"jit_group_id": "428ab4ba-1c94-492a-8eff-5729c67d6042"
+}

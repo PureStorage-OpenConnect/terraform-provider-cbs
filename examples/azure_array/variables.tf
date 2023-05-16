@@ -61,18 +61,3 @@ variable "key_vault_id" {
 variable "key_file_path" {
     type = string
 }
-variable "plan_name" {
-    type = string
-}
-
-variable "plan_product" {
-    type = string
-}
-
-variable "plan_publisher" {
-    type = string
-}
-
-variable "plan_version" {
-    type = string
-}
