@@ -177,6 +177,7 @@ func resourceArrayAzure() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"V10MUR1",
 					"V20MUR1",
+					"V20MP2R2",
 				}, false),
 			},
 
@@ -210,6 +211,12 @@ func resourceArrayAzure() *schema.Resource {
 					2,
 					3,
 				}),
+			},
+
+			"user_assigned_identity": {
+				Type:        schema.TypeString,
+				Description: "A required input that denotes the identity of the customer User Assigned identity.",
+				Required:    true,
 			},
 
 			"fusion_sec_identity": {
@@ -414,12 +421,19 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		setAppParameter("alertRecipients", "")
 	}
 
-	if v, ok := d.GetOk("fusion_sec_identity"); ok {
-		fusionIdentity := expandFusionIdentity(v.(string))
-
-		parameters.Identity = fusionIdentity
-		setAppParameter("fusionSECIdentity", fusionIdentity)
+	var identities = []string{}
+	if v, ok := d.GetOk("user_assigned_identity"); ok {
+		identities = append(identities, v.(string))
+	} else {
+		return diag.Errorf("failed to retrieve user_assigned_identity")
 	}
+
+	if v, ok := d.GetOk("fusion_sec_identity"); ok {
+		identities = append(identities, v.(string))
+		setAppParameter("fusionSECIdentity", expandIdentityObject(identities[1:]))
+	}
+
+	parameters.Identity = expandIdentityObject(identities)
 
 	if v, ok := d.GetOk("tags"); ok {
 		tags := v.(map[string]interface{})
@@ -670,12 +684,14 @@ func groupGetByDisplayName(ctx context.Context, client cloud.AzureClientAPI, dis
 	return &group, nil
 }
 
-func expandFusionIdentity(fusionSECIdentity string) *managedapplications.Identity {
+func expandIdentityObject(identities []string) *managedapplications.Identity {
+	var userIdentities = make(map[string]*managedapplications.UserAssignedResourceIdentity)
+	for _, identity := range identities {
+		userIdentities[identity] = new(managedapplications.UserAssignedResourceIdentity)
+	}
 	return &managedapplications.Identity{
-		Type: managedapplications.ResourceIdentityTypeUserAssigned,
-		UserAssignedIdentities: map[string]*managedapplications.UserAssignedResourceIdentity{
-			fusionSECIdentity: {},
-		},
+		Type:                   managedapplications.ResourceIdentityTypeUserAssigned,
+		UserAssignedIdentities: userIdentities,
 	}
 }
 

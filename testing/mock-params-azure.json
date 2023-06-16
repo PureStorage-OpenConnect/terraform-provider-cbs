@@ -12,5 +12,6 @@
     "virtual_network_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mock_resource_group_name/providers/Microsoft.Network/virtualNetworks/mock_vnet_name",
     "keyvault_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mock_resource_group_name/providers/Microsoft.KeyVault/vaults/A00000000000000000000000",
     "jit_group":"jit_group",
-    "jit_group_id":"00000000-0000-0000-0001-000000000000"
+    "jit_group_id":"00000000-0000-0000-0001-000000000000",
+    "user_assigned_identity": "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx"
 }

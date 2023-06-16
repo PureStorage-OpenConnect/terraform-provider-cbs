@@ -2,7 +2,7 @@ terraform {
     required_providers {
         cbs = {
             source = "PureStorage-OpenConnect/cbs"
-            version = "~> 0.8.0"
+            version = "~> 0.9.0"
         }
     }
 }
