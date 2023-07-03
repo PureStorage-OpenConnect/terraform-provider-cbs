@@ -1,3 +1,8 @@
+## 0.9.0 (July 3, 2023)
+
+* Added support for PremiumV2 SSD with V20MP2R2 SKU, refer to the [documentation](docs/resources/array_azure.md)
+* Added support for CosmosDB firewall rules using `user_assigned_identity`, refer to the [documentation](docs/resources/array_azure.md)
+
 ## 0.8.0 (May 15, 2023)
 
 * Added support for Cloud Block Store on Azure deployment for Pure Fusion using the `fusion_sec_identity` parameter, refer to the [documentation](docs/resources/array_azure.md)

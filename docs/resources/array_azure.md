@@ -10,8 +10,6 @@ description: |-
 
 Allows the deployment and management of a Cloud Block Store instance on Azure. The instance is deployed as an Azure Managed Application.
 
-The instance is deployed at Purity version 6.3.5.
-
 Refer to the [deployment guide](https://support.purestorage.com/FlashArray/PurityFA/Cloud_Block_Store/Cloud_Block_Store_Deployment_and_Configuration_Guide_for_Azure) for information on how to configure the Azure environment for the CBS instance.
 
 ~>Along with the infrastructure components defined in the deployment guide, an [Azure Key Vault](https://azure.microsoft.com/en-us/services/key-vault/)
@@ -84,6 +82,7 @@ resource "cbs_array_azure" "azure_instance" {
     system_subnet = "SN-xxxxxxxxxxxxxx"
     iscsi_subnet = "SN-xxxxxxxxxxxxxx"
     replication_subnet = "SN-xxxxxxxxxxxxxx"
+    user_assigned_identity = "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx",
 
     jit_approval_group_object_ids = ["xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"]
 }
@@ -93,7 +92,7 @@ resource "cbs_array_azure" "azure_instance" {
 ## Argument Reference
 
 - `alert_recipients` (Optional) - List of email addresses to receive alerts.
-- `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1` or `V20MUR1`.
+- `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1`, `V20MUR1` or `V20MP2R2`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
 - `fusion_sec_identity` (Optional) - Input that denotes the identity of a Fusion Storage Endpoint Collection, obtained during Azure Portal GUI or CLI deployment.
 Required when the array is deployed for use in a Fusion cluster.
@@ -112,6 +111,7 @@ The [azuread_group](https://registry.terraform.io/providers/hashicorp/azuread/la
 - `resource_group_name` (Required) - Name of the resource group in which to deploy the managed application.
 - `system_subnet` (Required) - Subnet for the system interface of the Array.
 - `tags` (Optional) - A list of tags to apply to all resources in the managed application.
+- `user_assigned_identity` (Required) - A required input that denotes the identity of the customer User Assigned identity.
 - `virtual_network_id` (Required) - The ID of the virtual network that contains the network interfaces of the array.
 - `zone` (Required) - The Availability Zone within the deployment location.
 

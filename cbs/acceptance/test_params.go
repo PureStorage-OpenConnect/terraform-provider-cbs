@@ -35,6 +35,7 @@ type AccTestCbsAzureParams struct {
 	JitGroup               string `json:"jit_group"`
 	JitGroupID             string `json:"jit_group_id"`
 	FusionSECIdentity      string `json:"fusion_sec_identity"`
+	UserAssignedIdentity   string `json:"user_assigned_identity"`
 }
 
 type AccTestCbsFusionSECAzureParams struct {

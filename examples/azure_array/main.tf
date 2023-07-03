@@ -2,7 +2,7 @@ terraform {
     required_providers {
         cbs = {
             source = "PureStorage-OpenConnect/cbs"
-            version = "~> 0.8.0"
+            version = "~> 0.9.0"
         }
     }
 }
@@ -33,6 +33,8 @@ resource "cbs_array_azure" "azure_instance" {
     replication_subnet = var.replication_subnet
 
     jit_approval_group_object_ids = var.jit_group_ids
+    user_assigned_identity = var.user_assigned_identity
+
     plan {
         name = data.cbs_azure_plans.azure_plans.plans[0].name
         product = data.cbs_azure_plans.azure_plans.plans[0].product

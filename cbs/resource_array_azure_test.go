@@ -246,13 +246,15 @@ func testAccAzureConfig(name string, orgDomain string, fusionArray bool) string 
 
 		%[16]s
 
+		user_assigned_identity = "%[17]s"
 		tags = {
 			foo = "bar"
 			test = "value"
 		}
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.JitGroupID, planHCL)
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.JitGroupID, planHCL,
+		cbsAzureParam.UserAssignedIdentity)
 }
 
 func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) string {
@@ -283,6 +285,7 @@ func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) st
 		%[14]s
 
 		app_definition_id = "%[15]s"
+		user_assigned_identity = "%[16]s"
 
 		tags = {
 			foo = "bar"
@@ -290,7 +293,8 @@ func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) st
 		}
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.AppDefinitionId)
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.AppDefinitionId,
+		cbsAzureParam.UserAssignedIdentity)
 }
 
 // Lazy load the Azure param values from the json file specified at TEST_ACC_AZURE_PARAMS_PATH.
