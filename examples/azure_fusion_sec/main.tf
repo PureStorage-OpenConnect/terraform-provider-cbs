@@ -22,10 +22,10 @@ resource "cbs_fusion_sec_azure" "fusion_sec_azure_instance" {
     jit_approval_group_object_ids = var.jit_group_ids
 
     plan {
-        name = "xxxx"
-        product = "xxxx"
-        publisher = "xxxx"
-        version = "xxxx"
+        name = "pure_sec_1_0_0"
+        product = "pure_fusion_storage_endpoint_collection"
+        publisher = "purestoragemarketplaceadmin"
+        version = "1.0.3"
     }
 }
 
@@ -34,7 +34,7 @@ output "fusion_sec_hmvip0" {
     value = fusion_sec_azure_instance.hmvip0
 }
 
-output "fusion_sec_hmvip0" {
+output "fusion_sec_hmvip1" {
     value = fusion_sec_azure_instance.hmvip1
 }
 
