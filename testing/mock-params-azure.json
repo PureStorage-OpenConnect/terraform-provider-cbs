@@ -13,5 +13,6 @@
     "keyvault_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mock_resource_group_name/providers/Microsoft.KeyVault/vaults/A00000000000000000000000",
     "jit_group":"jit_group",
     "jit_group_id":"00000000-0000-0000-0001-000000000000",
-    "user_assigned_identity": "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx"
+    "user_assigned_identity": "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx",
+    "resource_tags":  "[{\"resource\":\"Microsoft.Compute/virtualMachines\",\"tags\":[{\"tag_name\":\"some_tag_1\",\"tag_value\":\"some_tag_1_value\"},{\"tag_name\":\"some_tag_2\",\"tag_value\":\"some_tag_2_value\"}]},{\"resource\":\"Microsoft.Network/networkInterfaces\",\"tags\":[{\"tag_name\":\"some_tag_3\",\"tag_value\":\"some_tag_3_value\"},{\"tag_name\":\"some_tag_4\",\"tag_value\":\"some_tag_4_value\"}]}]\n"
 }

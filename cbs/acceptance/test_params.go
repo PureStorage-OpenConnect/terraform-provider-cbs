@@ -34,8 +34,8 @@ type AccTestCbsAzureParams struct {
 	VirtualNetworkId       string `json:"virtual_network_id"`
 	JitGroup               string `json:"jit_group"`
 	JitGroupID             string `json:"jit_group_id"`
-	FusionSECIdentity      string `json:"fusion_sec_identity"`
 	UserAssignedIdentity   string `json:"user_assigned_identity"`
+	ResourceTags           string `json:"resource_tags"`
 }
 
 type AccTestCbsFusionSECAzureParams struct {

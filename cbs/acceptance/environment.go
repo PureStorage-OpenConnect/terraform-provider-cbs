@@ -40,10 +40,6 @@ const (
 	// parameters file in json format
 	EnvTfAccAzureParamsPath = "TEST_ACC_AZURE_PARAMS_PATH"
 
-	// Enviromment variable with path to the Fusion Storage Endpoint
-	// Collection Azure acceptance tests parameters file in json format
-	EnvTfAccFusionSECAzureParamsPath = "TEST_ACC_FUSION_SEC_AZURE_PARAMS_PATH"
-
 	// Environment variable with path to the AWS acceptance tests
 	// parameters file in json format
 	EnvTfAccAwsParamsPath = "TEST_ACC_AWS_PARAMS_PATH"

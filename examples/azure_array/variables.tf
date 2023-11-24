@@ -65,3 +65,7 @@ variable "key_file_path" {
 variable "user_assigned_identity" {
     type = string
 }
+
+variable "plan_version" {
+    type = string
+}

@@ -139,6 +139,19 @@ func validateAzureManagedApplicationName(v interface{}, k string) (warnings []st
 	return warnings, errors
 }
 
+func validateVersionPrefixTag(v interface{}, k string) (warnings []string, errors []error) {
+	value := v.(string)
+
+	pattern := `^\d+\.\d+(?:\.\d+|\.x)?$`
+	regexpPattern := regexp.MustCompile(pattern)
+
+	if !regexpPattern.MatchString(value) {
+		errors = append(errors, fmt.Errorf("version prefix tag format not correct"))
+	}
+
+	return warnings, errors
+}
+
 func validateAzureResourceGroupName(v interface{}, k string) (warnings []string, errors []error) {
 	value := v.(string)
 

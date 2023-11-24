@@ -22,6 +22,7 @@ import (
 	"context"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/array"
@@ -61,6 +62,8 @@ type AzureClientAPI interface {
 	GroupsListComplete(ctx context.Context, filter string) (*[]graphrbac.ADGroup, error)
 	AppsCreateOrUpdate(ctx context.Context, resourceGroupName string, applicationName string, parameters managedapplications.Application) error
 	AppsGet(ctx context.Context, resourceGroupName string, applicationName string) (managedapplications.Application, error)
+	ResourcesGetByType(ctx context.Context, resourceType string, managedResourceGroup string) ([]resources.GenericResourceExpanded, error)
+	ResourceGet(ctx context.Context, resourceID string) (resources.GenericResource, error)
 	AppsDelete(ctx context.Context, resourceGroupName string, applicationName string) error
 	SecretSet(ctx context.Context, vaultId string, secretName string, parameters vaultSecret.SecretSetParameters) (vaultSecret.SecretBundle, error)
 	SecretGet(ctx context.Context, vaultId string, secretName string, version string) (vaultSecret.SecretBundle, error)

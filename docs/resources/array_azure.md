@@ -60,6 +60,10 @@ resource "azurerm_key_vault" "cbs_key_vault" {
   }
 }
 
+data "cbs_plan_azure" "version_plan" {
+    plan_version = "6.6.x"
+}
+
 resource "cbs_array_azure" "azure_instance" {
 
     array_name = "terraform-example-instance"
@@ -85,6 +89,13 @@ resource "cbs_array_azure" "azure_instance" {
     user_assigned_identity = "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx",
 
     jit_approval_group_object_ids = ["xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"]
+
+    plan {
+        name = data.cbs_plan_azure.version_plan.name
+        product = data.cbs_plan_azure.version_plan.product
+        publisher = data.cbs_plan_azure.version_plan.publisher
+        version = data.cbs_plan_azure.version_plan.version
+    }
 }
 ```
 
@@ -94,7 +105,6 @@ resource "cbs_array_azure" "azure_instance" {
 - `alert_recipients` (Optional) - List of email addresses to receive alerts.
 - `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1`, `V20MUR1` or `V20MP2R2`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
-- `fusion_sec_identity` (Optional) - Input that denotes the identity of a Fusion Storage Endpoint Collection, obtained during Azure Portal GUI or CLI deployment.
 Required when the array is deployed for use in a Fusion cluster.
 - `iscsi_subnet` (Required) - Subnet containing the iSCSI interfaces on the array.
 - `jit_approval_group_object_ids` (Required) - A list of Azure group object IDs for people who are allowed to approve JIT requests. When used the maximum possible duration of a JIT access request will be set to `PT8H`.
@@ -111,6 +121,7 @@ The [azuread_group](https://registry.terraform.io/providers/hashicorp/azuread/la
 - `resource_group_name` (Required) - Name of the resource group in which to deploy the managed application.
 - `system_subnet` (Required) - Subnet for the system interface of the Array.
 - `tags` (Optional) - A list of tags to apply to all resources in the managed application.
+- `resource_tags` (Optional) - A list of objects defining specific tags for specific resource types, overriding global tags if conflicting. See [below for nested schema](#nested-schema-for-resource_tags)
 - `user_assigned_identity` (Required) - A required input that denotes the identity of the customer User Assigned identity.
 - `virtual_network_id` (Required) - The ID of the virtual network that contains the network interfaces of the array.
 - `zone` (Required) - The Availability Zone within the deployment location.
@@ -123,6 +134,19 @@ The [azuread_group](https://registry.terraform.io/providers/hashicorp/azuread/la
 - `product` (Required) - Specifies the product of the plan from the marketplace.
 - `publisher` (Required) - Specifies the publisher of the plan.
 - `version` (Required) - Specifies the version of the plan from the marketplace.
+
+<a id="nestedblock--resource_tags"></a>
+### Nested Schema for `resource_tags`
+
+- `resource` (Required) - Specifies the Azure resource type to tag with custom tags defined inside of this block.
+Example `Microsoft.Compute/virtualMachines`, `Microsoft.Network/networkInterfaces` or `Microsoft.Compute/disks`
+- `tag` (Required) - Configuration block defining a custom tag for given resource type. See [below for nested schema](#nested-schema-for-tag)
+
+<a id="nestedblock--tag"></a>
+#### Nested Schema for `tag`
+
+- `name` (Required) - Name of the custom tag
+- `value` (Required) - Value for the custom tag
 
 ## Attribute Reference
 
