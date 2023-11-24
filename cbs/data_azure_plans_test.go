@@ -21,6 +21,7 @@ package cbs
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"testing"
 
@@ -49,8 +50,33 @@ func TestAccDataAzurePlans(t *testing.T) {
 	})
 }
 
+func TestAccDataCbsPlanAzure(t *testing.T) {
+
+	if os.Getenv(acceptance.EnvTfAccAzureSkipMarketplace) != "" {
+		t.Skipf("Skipping acc test due to env variable '%s'", acceptance.EnvTfAccAzureSkipMarketplace)
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProviderFactories: testAccProvidersFactory,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureDataCbsPlanAzure(),
+				Check: resource.ComposeTestCheckFunc(
+					testAccDataCbsPlanAzure(),
+				),
+			},
+		},
+	})
+}
+
 func testAccAzureDataPlansConfig() string {
 	return `data "cbs_azure_plans" "azure_plans" {}`
+}
+
+func testAccAzureDataCbsPlanAzure() string {
+	return `data "cbs_plan_azure" "version_plan" {
+		plan_version = "6.6.x"
+	}`
 }
 
 func testAccDataAzurePlans() resource.TestCheckFunc {
@@ -62,9 +88,11 @@ func testAccDataAzurePlans() resource.TestCheckFunc {
 		if err != nil {
 			return err
 		}
+
 		if plans_size < 2 {
 			return fmt.Errorf("Unexpected plans size: %d", plans_size)
 		}
+
 		for i := 0; i < plans_size; i++ {
 			// Check product version derivation from plan name makes sense.
 			plan_name := data_resource.Primary.Attributes["plans."+strconv.Itoa(i)+".name"]
@@ -97,6 +125,37 @@ func testAccDataAzurePlans() resource.TestCheckFunc {
 			if plan_version != parsed_version.String() {
 				return fmt.Errorf("Incorrect plan version: %s", plan_version)
 			}
+		}
+		return nil
+	}
+}
+
+func testAccDataCbsPlanAzure() resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		pattern := `^\d+\.\d+\.\d+$`
+		re := regexp.MustCompile(pattern)
+		data_resource := s.RootModule().Resources["data.cbs_plan_azure.version_plan"]
+
+		plan_name := data_resource.Primary.Attributes["name"]
+		match := plan_name_regexp.FindStringSubmatch(plan_name)
+		version_tag := fmt.Sprintf("%s.%s.%s", match[1], match[2], match[3])
+		if len(match) != 4 || !re.MatchString(version_tag) {
+			return fmt.Errorf("Incorrect plan name: %s", plan_name)
+		}
+
+		plan_product := data_resource.Primary.Attributes["product"]
+		if plan_product != "pure_storage_cloud_block_store_deployment" {
+			return fmt.Errorf("Incorrect plan product : %s", plan_product)
+		}
+
+		plan_publisher := data_resource.Primary.Attributes["publisher"]
+		if plan_publisher != "purestoragemarketplaceadmin" {
+			return fmt.Errorf("Incorrect plan publisher : %s", plan_publisher)
+		}
+
+		plan_version := data_resource.Primary.Attributes["version"]
+		if !re.MatchString(plan_version) {
+			return fmt.Errorf("Incorrect plan version : %s", plan_version)
 		}
 		return nil
 	}

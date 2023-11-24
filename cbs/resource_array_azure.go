@@ -20,6 +20,8 @@ package cbs
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -30,6 +32,7 @@ import (
 
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/auth"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/appcatalog"
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/internal/tfazurerm"
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/version"
@@ -53,20 +56,6 @@ const (
 	defaultPlanPublisher = "purestoragemarketplaceadmin"
 	defaultPlanVersion   = "1.0.0"
 )
-
-var templateTags = []string{
-	"Microsoft.Network/applicationSecurityGroups",
-	"Microsoft.DocumentDB/databaseAccounts",
-	"Microsoft.Compute/disks",
-	"Microsoft.KeyVault/vaults",
-	"Microsoft.Network/loadBalancers",
-	"Microsoft.ManagedIdentity/userAssignedIdentities",
-	"Microsoft.Compute/virtualMachines/extensions",
-	"Microsoft.Network/networkInterfaces",
-	"Microsoft.Network/networkSecurityGroups",
-	"Microsoft.Network/publicIPAddresses",
-	"Microsoft.Compute/virtualMachines",
-}
 
 var azureParams = []interface{}{
 	"arrayName",
@@ -219,12 +208,6 @@ func resourceArrayAzure() *schema.Resource {
 				Required:    true,
 			},
 
-			"fusion_sec_identity": {
-				Type:        schema.TypeString,
-				Description: "Optional input that denotes the identity of a Fusion Storage Endpoint Collection, obtained during Azure Portal GUI or CLI deployment",
-				Optional:    true,
-			},
-
 			"jit_approval_group_object_ids": {
 				Description: "This is a list of Azure group object IDs for people who are allowed to approve JIT requests",
 				Required:    true,
@@ -271,6 +254,39 @@ func resourceArrayAzure() *schema.Resource {
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
 					ValidateFunc: validation.StringIsNotEmpty,
+				},
+			},
+
+			"resource_tags": {
+				Description: "Optional field that defines specific tags for specific resource types",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"resource": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotEmpty,
+						},
+						"tag": {
+							Type:     schema.TypeList,
+							Required: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"name": {
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validation.StringIsNotEmpty,
+									},
+									"value": {
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validation.StringIsNotEmpty,
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 
@@ -341,6 +357,198 @@ func resourceArrayAzure() *schema.Resource {
 		sch.Schema["jit_approval_group_object_ids"].Optional = true
 	}
 	return sch
+}
+
+type JSONCreateUiDefinitionTemplate struct {
+	Parameters struct {
+		Steps []struct {
+			Name     string
+			Elements []struct {
+				Name      string
+				Resources []string
+			}
+		}
+	}
+}
+
+// Retrieve resource list from Azure createUiDefinition artifact
+func GetResourcesFromTemplateJson(data []byte) ([]string, error) {
+	// Parse the createUiDefinition template
+	var unmarshalled_data JSONCreateUiDefinitionTemplate
+	err := json.Unmarshal(data, &unmarshalled_data)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(unmarshalled_data.Parameters.Steps) == 0 {
+		return nil, fmt.Errorf("createUiDefinition resources is of unexpected size %d, it must have at least one element", len(unmarshalled_data.Parameters.Steps))
+	}
+
+	var resources []string
+	for _, v := range unmarshalled_data.Parameters.Steps {
+		if v.Name == "tags" {
+			if len(v.Elements) != 1 {
+				return nil, fmt.Errorf("createUiDefinition resources array is of unexpected size %d, it must have the size of 1", len(v.Elements))
+			}
+
+			if v.Elements[0].Name != "tags" {
+				return nil, fmt.Errorf("createUiDefinition resources has incorrect format to retrieve resource list")
+			}
+
+			if len(v.Elements[0].Resources) == 0 {
+				return nil, fmt.Errorf("createUiDefinition resources must not be empty")
+			}
+
+			resources = v.Elements[0].Resources
+		}
+	}
+
+	return resources, nil
+}
+
+func GetPlanArtifacts(ctx context.Context, planName string) (map[string]*appcatalog.Artifact, error) {
+	productSummary, err := GetProductSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, response_result := range productSummary.Results {
+		for _, response_plan := range response_result.Plans {
+			if !strings.HasPrefix(*response_plan.PlanID, "cbs_azure") {
+				continue
+			}
+
+			artifacts := make(map[string]*appcatalog.Artifact)
+			var plan *Plan
+			for _, response_artifact := range response_plan.Artifacts {
+				artifacts[*response_artifact.Name] = response_artifact
+				// we get the current plan from Default Template
+				if *response_artifact.Name == "DefaultTemplate" {
+					template_data, err := downloadToBuffer(*response_artifact.URI)
+					if err != nil {
+						return artifacts, err
+					}
+
+					plan, err = GetPlanFromTemplateJson(template_data)
+					if err != nil {
+						return artifacts, err
+					}
+				}
+			}
+
+			if plan.Name == planName {
+				return artifacts, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("plan %s not found to get artifacts", planName)
+}
+
+func GetProductSummary(ctx context.Context) (appcatalog.SearchClientGetResponse, error) {
+	search_client := appcatalog.NewSearchClient()
+	return search_client.Get(ctx, "en", "US", "terraform-cbs-provider", []appcatalog.SearchV2FieldName{"All"}, []string{"purestoragemarketplaceadmin"})
+}
+
+func GetResourceListFromUiDefinitionUrl(url string) ([]string, error) {
+	template_data, err := downloadToBuffer(url)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetResourcesFromTemplateJson(template_data)
+}
+
+func getPlanResources(ctx context.Context, p interface{}) ([]string, error) {
+	planInterface := p.([]interface{})[0]
+	plan := planInterface.(map[string]interface{})
+	planName := plan["name"].(string)
+
+	artifacts, err := GetPlanArtifacts(ctx, planName)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetResourceListFromUiDefinitionUrl(*artifacts["createuidefinition"].URI)
+}
+
+func getResourcesFromAppDefinitionId(ctx context.Context, azureClient cloud.AzureClientAPI, appDefinitionID string) ([]string, error) {
+	resource, err := azureClient.ResourceGet(ctx, appDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+
+	properties := resource.Properties.(map[string]interface{})
+	artifacts := properties["artifacts"].([]interface{})
+	var resources []string
+	for _, artifact := range artifacts {
+		details := artifact.(map[string]interface{})
+		name := details["name"].(string)
+		if name == "ApplicationResourceTemplate" {
+			// to get createUiDefinition.json file we simply construct url by
+			// removing last resource number (32 bytes long) and replace it with createUiDefinition.json
+			uri := details["uri"].(string)
+			uri = uri[:len(uri)-32] + "createUiDefinition.json"
+			resources, err = GetResourceListFromUiDefinitionUrl(uri)
+			if err != nil {
+				return nil, errors.New("cannot get resource list from uidefinition url")
+			}
+			break
+		}
+	}
+
+	if len(resources) == 0 {
+		return nil, errors.New("Resource list must not be empty")
+	}
+
+	return resources, err
+}
+
+func getResourcesForCurrentDeployment(ctx context.Context, azureClient cloud.AzureClientAPI, d *schema.ResourceData) ([]string, error) {
+	var resources []string
+	var err error
+	if appDefinitionId, ok := d.GetOk("app_definition_id"); ok {
+		resources, err = getResourcesFromAppDefinitionId(ctx, azureClient, appDefinitionId.(string))
+		if err != nil {
+			return nil, fmt.Errorf("cannot get resource list from app_definition_id %s %+v", appDefinitionId.(string), err)
+		}
+	}
+
+	if planParam, ok := d.GetOk("plan"); ok {
+		resources, err = getPlanResources(ctx, planParam)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve resource list based on plan %+v", err)
+		}
+	}
+
+	if len(resources) == 0 {
+		return nil, fmt.Errorf("resource list cannot be empty")
+	}
+
+	return resources, nil
+}
+
+func SetResourceTags(resourceType string, resourceTagList []interface{}, resources []string, tagsMap *map[string]interface{}) error {
+	resourceExists := false
+	for _, v := range resources {
+		if v == resourceType {
+			resourceExists = true
+		}
+	}
+	if !resourceExists {
+		return fmt.Errorf("provided resource type %s not found", resourceType)
+	}
+	for _, tagPair := range resourceTagList {
+		tagMap := tagPair.(map[string]interface{})
+		key := tagMap["name"].(string)
+		value := tagMap["value"].(string)
+		if _, ok := (*tagsMap)[resourceType]; !ok {
+			(*tagsMap)[resourceType] = make(map[string]interface{})
+		}
+		(*tagsMap)[resourceType].(map[string]interface{})[key] = value
+	}
+
+	return nil
 }
 
 func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m interface{}) (returnedDiags diag.Diagnostics) {
@@ -428,21 +636,44 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 		return diag.Errorf("failed to retrieve user_assigned_identity")
 	}
 
-	if v, ok := d.GetOk("fusion_sec_identity"); ok {
-		identities = append(identities, v.(string))
-		setAppParameter("fusionSECIdentity", expandIdentityObject(identities[1:]))
-	}
-
 	parameters.Identity = expandIdentityObject(identities)
 
+	tagsMap := make(map[string]interface{})
 	if v, ok := d.GetOk("tags"); ok {
-		tags := v.(map[string]interface{})
-		tagsMap := make(map[string]interface{})
-		for _, tag := range templateTags {
-			tagsMap[tag] = tags
+		resources, err := getResourcesForCurrentDeployment(ctx, azureClient, d)
+		if err != nil {
+			return diag.Errorf("cannot get resource list %+v", err)
 		}
-		setAppParameter("tagsByResource", tagsMap)
+
+		tags := v.(map[string]interface{})
+		for _, tag := range resources {
+			copyMap := make(map[string]interface{})
+			for key, value := range tags {
+				copyMap[key] = value
+			}
+			tagsMap[tag] = copyMap
+		}
 	}
+
+	if v, ok := d.GetOk("resource_tags"); ok {
+		resources, err := getResourcesForCurrentDeployment(ctx, azureClient, d)
+		if err != nil {
+			return diag.Errorf("cannot get resource list %+v", err)
+		}
+
+		resource_tags := v.([]interface{})
+		for _, resource_tag := range resource_tags {
+			resource := resource_tag.(map[string]interface{})["resource"].(string)
+			resourceTagList := resource_tag.(map[string]interface{})["tag"].([]interface{})
+
+			err = SetResourceTags(resource, resourceTagList, resources, &tagsMap)
+			if err != nil {
+				return diag.Errorf("cannot set resource tags %+v", err)
+			}
+		}
+	}
+
+	setAppParameter("tagsByResource", tagsMap)
 
 	err = prevalidateKeyVaultId(ctx, d, azureClient)
 	if err != nil {
@@ -546,13 +777,6 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 					recips := strings.Split(v.value.(string), ",")
 					d.Set("alert_recipients", recips)
 				}
-				if k == "tagsByResource" {
-					maps := v.value.(map[string]interface{})
-					for _, tagValue := range maps {
-						d.Set("tags", tagValue)
-						break
-					}
-				}
 				if azureParamSet.Contains(k) {
 					if strings.HasSuffix(k, "Vnet") {
 						vnetName = v.value.(string)
@@ -561,7 +785,6 @@ func resourceArrayAzureRead(ctx context.Context, d *schema.ResourceData, m inter
 					} else {
 						d.Set(templateToTFParam(k, renamedAzureParams), v.value)
 					}
-
 				}
 			}
 		}

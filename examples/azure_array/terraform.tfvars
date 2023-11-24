@@ -16,3 +16,4 @@ replication_subnet     = "SN-xxxxxxxxxxxxxx"
 jit_group_ids          = ["xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"]
 key_file_path          = "example.pem"
 user_assigned_identity = "/subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx/resourcegroups/mock_resource_group_name/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxxxxxx"
+plan_version           = "6.6.x"

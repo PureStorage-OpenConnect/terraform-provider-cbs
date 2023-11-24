@@ -1,3 +1,8 @@
+## 0.10.0 (July 9, 2024)
+
+* Added support for tagging by resource type, refer to the [documentation](docs/resources/array_azure.md#nested-schema-for-resource_tags)
+* Added support for specifying version plan tag when deploying array (e.g. `6.6.4` or `6.6.x`)
+
 ## 0.9.0 (July 3, 2023)
 
 * Added support for PremiumV2 SSD with V20MP2R2 SKU, refer to the [documentation](docs/resources/array_azure.md)

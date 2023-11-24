@@ -2,14 +2,16 @@ terraform {
     required_providers {
         cbs = {
             source = "PureStorage-OpenConnect/cbs"
-            version = "~> 0.9.0"
+            version = "~> 0.10.0"
         }
     }
 }
 
 provider "cbs" {}
 
-data "cbs_azure_plans" "azure_plans" {}
+data "cbs_plan_azure" "version_plan" {
+    plan_version = var.plan_version
+}
 
 resource "cbs_array_azure" "azure_instance" {
 
@@ -35,11 +37,31 @@ resource "cbs_array_azure" "azure_instance" {
     jit_approval_group_object_ids = var.jit_group_ids
     user_assigned_identity = var.user_assigned_identity
 
+    resource_tags {
+        resource = "Microsoft.Compute/virtualMachines"
+        tag {
+            name = "foo"
+            value = "bar"
+        }
+        tag {
+            name = "baz"
+            value = "qux"
+        }
+    }
+
+    resource_tags {
+        resource = "Microsoft.Network/networkInterfaces"
+        tag {
+            name = "foo"
+            value = "bar"
+        }
+    }
+
     plan {
-        name = data.cbs_azure_plans.azure_plans.plans[0].name
-        product = data.cbs_azure_plans.azure_plans.plans[0].product
-        publisher = data.cbs_azure_plans.azure_plans.plans[0].publisher
-        version = data.cbs_azure_plans.azure_plans.plans[0].version
+        name = data.cbs_plan_azure.version_plan.name
+        product = data.cbs_plan_azure.version_plan.product
+        publisher = data.cbs_plan_azure.version_plan.publisher
+        version = data.cbs_plan_azure.version_plan.version
     }
 
     lifecycle {
@@ -50,7 +72,7 @@ resource "cbs_array_azure" "azure_instance" {
 }
 
 output "cbs_azure_available_plans" {
-    value = data.cbs_azure_plans.azure_plans.plans
+    value = data.cbs_plan_azure.version_plan
 }
 
 output "cbs_mgmt_endpoint" {

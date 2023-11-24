@@ -96,12 +96,12 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"cbs_array_aws":        resourceArrayAWS(),
-			"cbs_array_azure":      resourceArrayAzure(),
-			"cbs_fusion_sec_azure": resourceFusionSECAzure(),
+			"cbs_array_aws":   resourceArrayAWS(),
+			"cbs_array_azure": resourceArrayAzure(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"cbs_azure_plans": dataSourceAzurePlans(),
+			"cbs_plan_azure":  dataSourceCbsPlanAzure(),
 		},
 		ConfigureContextFunc: configureProvider,
 	}

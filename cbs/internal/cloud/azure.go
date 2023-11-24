@@ -43,6 +43,7 @@ import (
 	vaultManagement "github.com/Azure/azure-sdk-for-go/services/preview/keyvault/mgmt/2020-04-01-preview/keyvault"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/tracing"
@@ -55,6 +56,7 @@ import (
 )
 
 const azureEnvironment = "public"
+const resourceApiVersion = "2021-07-01"
 
 // Used to trace Azure API requests
 type tracerTransport struct {
@@ -104,6 +106,7 @@ type azureClient struct {
 	groupsClient          graphrbac.GroupsClient
 	vaultManagementClient vaultManagement.VaultsClient
 	vaultSecretClient     vaultSecret.BaseClient
+	resourceClient        resources.Client
 }
 
 func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientAPI, error) {
@@ -171,11 +174,15 @@ func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientA
 	groupClient := graphrbac.NewGroupsClient(config.TenantID)
 	groupClient.Authorizer = graphAuth
 
+	resourceClient := resources.NewClient(config.SubscriptionID)
+	resourceClient.Authorizer = auth
+
 	return &azureClient{
 		applicationsClient:    applicationsClient,
 		groupsClient:          groupClient,
 		vaultManagementClient: vaultManagementClient,
 		vaultSecretClient:     vaultSecretClient,
+		resourceClient:        resourceClient,
 	}, nil
 
 }
@@ -206,6 +213,30 @@ func (azureClient *azureClient) AppsCreateOrUpdate(ctx context.Context, resource
 
 func (azureClient *azureClient) AppsGet(ctx context.Context, resourceGroupName string, applicationName string) (managedapplications.Application, error) {
 	return azureClient.applicationsClient.Get(ctx, resourceGroupName, applicationName)
+}
+
+func (azureClient *azureClient) ResourceGet(ctx context.Context, resourceID string) (resources.GenericResource, error) {
+	return azureClient.resourceClient.GetByID(ctx, resourceID, resourceApiVersion)
+}
+
+func (azureClient *azureClient) ResourcesGetByType(ctx context.Context, resourceType string, resourceGroupName string) ([]resources.GenericResourceExpanded, error) {
+	resList, err := azureClient.resourceClient.ListByResourceGroupComplete(context.Background(), resourceGroupName, "", "", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resourceList := make([]resources.GenericResourceExpanded, 0)
+	for resList.NotDone() {
+		resource := resList.Value()
+		if *resource.Type == resourceType {
+			resourceList = append(resourceList, resource)
+		}
+		if resList.NextWithContext(context.TODO()) != nil {
+			break
+		}
+	}
+
+	return resourceList, nil
 }
 
 func (azureClient *azureClient) AppsDelete(ctx context.Context, resourceGroupName string, applicationName string) error {

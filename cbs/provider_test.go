@@ -238,7 +238,6 @@ func TestProvider_HasExpectedResources(t *testing.T) {
 	expectedResources := []string{
 		"cbs_array_aws",
 		"cbs_array_azure",
-		"cbs_fusion_sec_azure",
 	}
 
 	resources := testAccProvider.ResourcesMap

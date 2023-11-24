@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/appcatalog"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -67,6 +66,39 @@ func dataSourceAzurePlans() *schema.Resource {
 	}
 }
 
+func dataSourceCbsPlanAzure() *schema.Resource {
+	return &schema.Resource{
+		ReadContext: dataSourceCbsPlanAzureRead,
+		Schema: map[string]*schema.Schema{
+			"plan_version": {
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validateVersionPrefixTag,
+			},
+			"name": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Elem:     schema.TypeString,
+			},
+			"version": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Elem:     schema.TypeString,
+			},
+			"publisher": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Elem:     schema.TypeString,
+			},
+			"product": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Elem:     schema.TypeString,
+			},
+		},
+	}
+}
+
 type Plan struct {
 	Name      string
 	Product   string
@@ -96,7 +128,7 @@ func (a PlanByVersion) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 var plan_name_regexp = regexp.MustCompile(`^[\w]+_([\d]+)_([\d]+)_([\d]+)$`)
 
 // Retrieve a plan information from Azure DefaultTemplate artifact
-func getPlanFromTemplateJson(data []byte) (*Plan, error) {
+func GetPlanFromTemplateJson(data []byte) (*Plan, error) {
 	// Parse the default template
 	var unmarshalled_data JSONDefaultTemplate
 	err := json.Unmarshal(data, &unmarshalled_data)
@@ -131,16 +163,14 @@ func versionPlans(plans []Plan) ([]VersionedPlan, error) {
 	return versioned_plans, nil
 }
 
-func queryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
-
-	search_client := appcatalog.NewSearchClient()
-	response, err := search_client.Get(ctx, "en", "US", "terraform-cbs-provider", []appcatalog.SearchV2FieldName{"All"}, []string{"purestoragemarketplaceadmin"})
+func QueryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
+	productSummary, err := GetProductSummary(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	var template_plans []Plan
-	for _, response_result := range response.Results {
+	for _, response_result := range productSummary.Results {
 		for _, response_plan := range response_result.Plans {
 			if !strings.HasPrefix(*response_plan.PlanID, "cbs_azure") {
 				// Exclude any plans which aren't the Pure Cloud Block Store on Azure offering.
@@ -158,7 +188,7 @@ func queryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
 					continue
 				}
 
-				template_plan, err := getPlanFromTemplateJson(template_data)
+				template_plan, err := GetPlanFromTemplateJson(template_data)
 				if err != nil {
 					continue
 				}
@@ -174,7 +204,7 @@ func queryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
 func dataSourceAzurePlansRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	versioned_plans, err := queryMarketplaceForPlans(ctx)
+	versioned_plans, err := QueryMarketplaceForPlans(ctx)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -197,6 +227,53 @@ func dataSourceAzurePlansRead(ctx context.Context, d *schema.ResourceData, m int
 		if err != nil {
 			return diag.FromErr(err)
 		}
+	}
+
+	return diags
+}
+
+func dataSourceCbsPlanAzureRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	versioned_plans, err := QueryMarketplaceForPlans(ctx)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	version_prefix_tag := d.Get("plan_version").(string)
+	if version_prefix_tag[len(version_prefix_tag)-1] == 'x' {
+		version_prefix_tag = version_prefix_tag[0 : len(version_prefix_tag)-1]
+	}
+
+	set := false
+	for _, versioned_plan := range versioned_plans {
+		match := plan_name_regexp.FindStringSubmatch(versioned_plan.Plan.Name)
+		version_tag := fmt.Sprintf("%s.%s.%s", match[1], match[2], match[3])
+		if strings.HasPrefix(version_tag, version_prefix_tag) {
+			d.SetId(strconv.FormatInt(time.Now().Unix(), 10))
+			err = d.Set("name", versioned_plan.Plan.Name)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = d.Set("product", versioned_plan.Plan.Product)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = d.Set("publisher", versioned_plan.Plan.Publisher)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = d.Set("version", versioned_plan.Plan.Version)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			set = true
+			break
+		}
+	}
+
+	if !set {
+		return diag.FromErr(errors.New("Specific plan for provided version tag not found"))
 	}
 
 	return diags

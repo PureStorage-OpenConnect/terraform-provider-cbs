@@ -32,6 +32,7 @@ import (
 	"regexp"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/Azure/go-autorest/autorest"
@@ -136,6 +137,14 @@ func (m *mockAzureClient) AppsGet(ctx context.Context, resourceGroupName string,
 		}}, fmt.Errorf("mock appsGet not found")
 	}
 	return *app, nil
+}
+
+func (m *mockAzureClient) ResourceGet(ctx context.Context, resourceID string) (resources.GenericResource, error) {
+	return resources.GenericResource{}, nil
+}
+
+func (m *mockAzureClient) ResourcesGetByType(ctx context.Context, resourceType string, managedResourceGroup string) ([]resources.GenericResourceExpanded, error) {
+	return nil, nil
 }
 
 func (m *mockAzureClient) AppsDelete(ctx context.Context, resourceGroupName string, applicationName string) error {

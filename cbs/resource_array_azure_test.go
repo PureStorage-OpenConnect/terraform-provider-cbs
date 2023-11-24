@@ -21,6 +21,7 @@ package cbs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/acceptance"
+	"github.com/PureStorage-OpenConnect/terraform-provider-cbs/cbs/internal/cloud"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -39,6 +41,17 @@ var azureParamsConfigure sync.Once
 
 func TestAccArrayAzure_basic(t *testing.T) {
 	loadAccAzureParams(t)
+	plans, err := QueryMarketplaceForPlans(context.TODO())
+	if err != nil {
+		t.Error(err)
+	}
+
+	// when tags are provided plan is needed to get plan specific
+	// list of resources to assign all tags to each resource
+	cbsAzureParam.PlanName = plans[0].Plan.Name
+	cbsAzureParam.PlanProduct = "pure_storage_cloud_block_store_deployment"
+	cbsAzureParam.PlanPublisher = "purestoragemarketplaceadmin"
+	cbsAzureParam.PlanVersion = plans[0].Plan.Version
 
 	if os.Getenv(acceptance.EnvTfAccAzureSkipMarketplace) != "" {
 		t.Skipf("Skipping acc test due to env variable '%s'", acceptance.EnvTfAccAzureSkipMarketplace)
@@ -54,55 +67,16 @@ func TestAccArrayAzure_basic(t *testing.T) {
 		CheckDestroy:      testAccCheckArrayAzureDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAzureConfig(arrayName, orgDomain, false),
+				Config: testAccAzureConfig(arrayName, orgDomain),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
+					testAccArrayTags(resourceName),
 					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
 					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
 				),
 			},
 			{
-				Config:      testAccAzureConfig(arrayName, orgDomain2, false),
-				ExpectError: regexp.MustCompile("Updates are not supported."),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
-				),
-			},
-		},
-	})
-}
-
-func TestAccArrayAzure_basicFusion(t *testing.T) {
-	loadAccAzureParams(t)
-
-	if os.Getenv(acceptance.EnvTfAccAzureSkipMarketplace) != "" {
-		t.Skipf("Skipping acc tests due to env variable '%s'", acceptance.EnvTfAccAzureSkipMarketplace)
-	}
-
-	if cbsAzureParam.FusionSECIdentity == "" {
-		t.Skip("Skipping acc test as fusion_sec_identity is not set in the param file")
-	}
-
-	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
-	resourceName := "cbs_array_azure.test_array_azure"
-	orgDomain := "example.com"
-	orgDomain2 := "example-invalid-update.com"
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProviderFactories: testAccProvidersFactory,
-		CheckDestroy:      testAccCheckArrayAzureDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAzureConfig(arrayName, orgDomain, true),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureBasicCheck(resourceName, arrayName, orgDomain),
-					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
-				),
-			},
-			{
-				Config:      testAccAzureConfig(arrayName, orgDomain2, true),
+				Config:      testAccAzureConfig(arrayName, orgDomain2),
 				ExpectError: regexp.MustCompile("Updates are not supported."),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
@@ -130,7 +104,7 @@ func TestAccArrayAzure_basicAppId(t *testing.T) {
 		CheckDestroy:      testAccCheckArrayAzureDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAzureConfigAppId(arrayName, orgDomain, false),
+				Config: testAccAzureConfigAppId(arrayName, orgDomain),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
 					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
@@ -138,7 +112,7 @@ func TestAccArrayAzure_basicAppId(t *testing.T) {
 				),
 			},
 			{
-				Config:      testAccAzureConfigAppId(arrayName, orgDomain2, false),
+				Config:      testAccAzureConfigAppId(arrayName, orgDomain2),
 				ExpectError: regexp.MustCompile("Updates are not supported."),
 				Check: resource.ComposeTestCheckFunc(
 					testAccArrayAzureExists(resourceName),
@@ -149,51 +123,157 @@ func TestAccArrayAzure_basicAppId(t *testing.T) {
 	})
 }
 
-func TestAccArrayAzure_basicAppIdFusion(t *testing.T) {
-	loadAccAzureParams(t)
-
-	if cbsAzureParam.AppDefinitionId == "" {
-		t.Skip("Skipping acc test due to app_definition_id is not set in the param file")
+func TestGetResourcesFromTemplateJsonMalformedJson(t *testing.T) {
+	// case for incorrect json file
+	_, err := GetResourcesFromTemplateJson([]byte{'x'})
+	if err == nil {
+		t.Errorf("incorrect json parsing must have failed")
 	}
-
-	if os.Getenv(acceptance.EnvTfAccAzureSkipFusionAppId) != "" {
-		t.Skipf("Skipping acc tests due to env variable '%s'", acceptance.EnvTfAccAzureSkipFusionAppId)
-	}
-
-	if cbsAzureParam.FusionSECIdentity == "" {
-		t.Skip("Skipping acc test as fusion_sec_identity is not set in the param file")
-	}
-
-	arrayName := acctest.RandomWithPrefix(cbsAzureParam.ArrayName)
-	resourceName := "cbs_array_azure.test_array_azure"
-	orgDomain := "example.com"
-	orgDomain2 := "example-invalid-update.com"
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProviderFactories: testAccProvidersFactory,
-		CheckDestroy:      testAccCheckArrayAzureDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAzureConfigAppId(arrayName, orgDomain, true),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
-					testAccArrayAzureOptOutDefaultProtectionPolicy(resourceName),
-				),
-			},
-			{
-				Config:      testAccAzureConfigAppId(arrayName, orgDomain2, true),
-				ExpectError: regexp.MustCompile("Updates are not supported."),
-				Check: resource.ComposeTestCheckFunc(
-					testAccArrayAzureExists(resourceName),
-					testAccCheckAzureAppIdCheck(resourceName, arrayName, orgDomain),
-				),
-			},
-		},
-	})
 }
 
-func testAccAzureConfig(name string, orgDomain string, fusionArray bool) string {
+func TestGetResourcesFromTemplateJsonEmptyResources(t *testing.T) {
+	resource_json := []byte(`{
+		"parameters": {
+			"steps": [
+				{
+					"name": "network",
+				},
+				{
+					"name": "tags_name",
+					"elements": [
+						{
+							"name": "tags_name",
+							"type": "Microsoft.Common.TagsByResource",
+							"resources": [
+							],
+						}
+					]
+				},
+			],
+		}
+	}`)
+
+	// resources not present
+	_, err := GetResourcesFromTemplateJson(resource_json)
+	if err == nil {
+		t.Errorf("Should have failed as resources are not found")
+	}
+}
+
+func TestGetResourcesFromTemplateIncorrectField(t *testing.T) {
+	var err error
+	resource_json := []byte(`{
+		"parameters": {
+			"steps": [
+				{
+					"name": "network",
+				},
+				{
+					"name": "tags_name",
+					"elements": [
+						{
+							"name": "tags_name",
+							"type": "Microsoft.Common.TagsByResource",
+							"resources": [
+								"Microsoft.Compute/virtualMachines",
+								"Microsoft.Network/networkInterfaces",
+							],
+						}
+					]
+				},
+			],
+		}
+	}`)
+
+	//tags parameter not found
+	_, err = GetResourcesFromTemplateJson(resource_json)
+	if err == nil {
+		t.Errorf("should have failed as tags not found %+v", err)
+		return
+	}
+
+	if err.Error() != "invalid character '}' looking for beginning of object key string" {
+		t.Errorf("should have failed for the error - 'invalid character '}' looking for beginning of object key string'")
+	}
+}
+
+func TestSetResourceTagsResourceSuccess(t *testing.T) {
+	tagsMap := make(map[string]interface{})
+	resource := "someResourceType"
+	resources := []string{"someResourceType", "someOtherResource"}
+	resourceTagList := []interface{}{map[string]interface{}{"name": "someTag", "value": "someTagValue"}}
+
+	err := SetResourceTags(resource, resourceTagList, resources, &tagsMap)
+	if err != nil {
+		t.Errorf("must have succeeded but have error %s", err.Error())
+	}
+
+	if _, ok := tagsMap[resource]; !ok {
+		t.Errorf("resource tag is not set")
+	}
+
+	if val, ok := tagsMap[resource].(map[string]interface{})["someTag"]; !ok {
+		t.Errorf("tag not set for the resource")
+	} else {
+		if val.(string) != "someTagValue" {
+			t.Errorf("tag value not correct")
+		}
+	}
+}
+
+func TestSetResourceTagsResourceNotFound(t *testing.T) {
+	tagsMap := make(map[string]interface{})
+	resource := "someResourceType1"
+	resources := []string{"someResourceType", "someOtherResource"}
+	resourceTagList := []interface{}{map[string]string{"tag_name": "someTagName", "tag_value": "someTagValue"}}
+
+	err := SetResourceTags(resource, resourceTagList, resources, &tagsMap)
+	if err == nil {
+		t.Errorf("must have failed with unknown resource type mssage")
+	}
+
+	if err.Error() != "provided resource type someResourceType1 not found" {
+		t.Errorf("error must be: %s but was %s", "provided resource type someResourceType1 not found", err.Error())
+	}
+}
+
+func TestGetResourcesFromTemplateSuccess(t *testing.T) {
+	var resources []string
+	var err error
+	resource_json := []byte(`{
+		"parameters": {
+			"steps": [
+				{
+					"name": "network"
+				},
+				{
+					"name": "tags",
+					"elements": [
+						{
+							"name": "tags",
+							"type": "Microsoft.Common.TagsByResource",
+							"resources": [
+								"Microsoft.Compute/virtualMachines",
+								"Microsoft.Network/networkInterfaces"
+							]
+						}
+					]
+				}
+			]
+		}
+	}`)
+
+	resources, err = GetResourcesFromTemplateJson(resource_json)
+	if err != nil {
+		t.Errorf("json parsing must have been successful %s", err.Error())
+	}
+
+	if len(resources) != 2 {
+		t.Errorf("unexpected number of resources %d", len(resources))
+	}
+}
+
+func testAccAzureConfig(name string, orgDomain string) string {
 	planHCL := ""
 	if cbsAzureParam.PlanName != "" ||
 		cbsAzureParam.PlanProduct != "" ||
@@ -214,9 +294,9 @@ func testAccAzureConfig(name string, orgDomain string, fusionArray bool) string 
 		)
 	}
 
-	fusionHCL := ""
-	if fusionArray {
-		fusionHCL = fmt.Sprintf(`fusion_sec_identity = "%s"`, cbsAzureParam.FusionSECIdentity)
+	resourceTags := "[]"
+	if cbsAzureParam.ResourceTags != "" {
+		resourceTags = cbsAzureParam.ResourceTags
 	}
 
 	return fmt.Sprintf(`
@@ -237,32 +317,40 @@ func testAccAzureConfig(name string, orgDomain string, fusionArray bool) string 
 		alert_recipients = ["user@example.com"]
 		array_model = "%[13]s"
 		zone = 3
-
-		%[14]s
 
 		jit_approval_group_object_ids = [
-				"%[15]s",
+				"%[14]s",
 		]
 
-		%[16]s
+		%[15]s
 
-		user_assigned_identity = "%[17]s"
+		user_assigned_identity = "%[16]s"
 		tags = {
 			foo = "bar"
-			test = "value"
+			dada = "dudu"
+			some_tag_2 = "some_tag_2_value"
+		}
+
+		dynamic "resource_tags" {
+			for_each = %[17]s
+			content {
+				resource = resource_tags.value.resource
+				dynamic "tag" {
+					for_each = resource_tags.value.tags
+					content {
+						name = tag.value.tag_name
+						value = tag.value.tag_value
+					}
+				}
+			}
 		}
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.JitGroupID, planHCL,
-		cbsAzureParam.UserAssignedIdentity)
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, cbsAzureParam.JitGroupID, planHCL,
+		cbsAzureParam.UserAssignedIdentity, resourceTags)
 }
 
-func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) string {
-	fusionHCL := ""
-	if fusionArray {
-		fusionHCL = fmt.Sprintf(`fusion_sec_identity = "%s"`, cbsAzureParam.FusionSECIdentity)
-	}
-
+func testAccAzureConfigAppId(name string, orgDomain string) string {
 	return fmt.Sprintf(`
 	resource "cbs_array_azure" "test_array_azure" {
 		array_name = "%[1]s"
@@ -282,18 +370,11 @@ func testAccAzureConfigAppId(name string, orgDomain string, fusionArray bool) st
 		array_model = "%[13]s"
 		zone = 3
 
-		%[14]s
-
-		app_definition_id = "%[15]s"
-		user_assigned_identity = "%[16]s"
-
-		tags = {
-			foo = "bar"
-			test = "value"
-		}
+		app_definition_id = "%[14]s"
+		user_assigned_identity = "%[15]s"
 	}`, name, orgDomain, cbsAzureParam.ResourceGroupName, cbsAzureParam.LicenseKey, cbsAzureParam.PureuserPrivateKeyPath, cbsAzureParam.SystemSubnet,
 		cbsAzureParam.ReplicationSubnet, cbsAzureParam.ISCSISubnet, cbsAzureParam.ManagementSubnet, cbsAzureParam.VirtualNetworkId,
-		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, fusionHCL, cbsAzureParam.AppDefinitionId,
+		cbsAzureParam.Location, cbsAzureParam.KeyvaultId, cbsAzureParam.ArrayModel, cbsAzureParam.AppDefinitionId,
 		cbsAzureParam.UserAssignedIdentity)
 }
 
@@ -339,6 +420,93 @@ func testAccCheckArrayAzureDestroy(s *terraform.State) error {
 	}
 
 	return nil
+}
+
+func checkVirtualMachineTags(ctx context.Context, api cloud.AzureClientAPI, managedResourceGroup string) error {
+	virtualMachines, err := api.ResourcesGetByType(ctx, "Microsoft.Compute/virtualMachines", managedResourceGroup)
+	if err != nil {
+		return err
+	}
+
+	for _, virtualMachine := range virtualMachines {
+		if _, ok := virtualMachine.Tags["foo"]; !ok {
+			return errors.New("foo was not set in tags for Microsoft.Compute/virtualMachines")
+		}
+
+		if _, ok := virtualMachine.Tags["some_tag_1"]; !ok {
+			return errors.New("some_tag_1 was not set in tags for Microsoft.Compute/virtualMachines")
+		}
+
+		if _, ok := virtualMachine.Tags["some_tag_2"]; !ok {
+			return errors.New("some_tag_2 was not set in tags for Microsoft.Compute/virtualMachines")
+		}
+
+		if *virtualMachine.Tags["some_tag_1"] != "some_tag_1_value" ||
+			*virtualMachine.Tags["some_tag_2"] != "some_tag_2_value" ||
+			*virtualMachine.Tags["foo"] != "bar" {
+			return errors.New("tags for Microsoft.Compute/virtualMachines not correct")
+		}
+	}
+	return nil
+}
+
+func checkNetworkInterfacesTags(ctx context.Context, api cloud.AzureClientAPI, managedResourceGroup string) error {
+	disks, err := api.ResourcesGetByType(ctx, "Microsoft.Network/networkInterfaces", managedResourceGroup)
+	if err != nil {
+		return err
+	}
+
+	for _, disk := range disks {
+		if _, ok := disk.Tags["foo"]; !ok {
+			return errors.New("foo was not set in tags for Microsoft.Network/networkInterfaces")
+		}
+
+		if _, ok := disk.Tags["some_tag_2"]; !ok {
+			return errors.New("some_tag_2 was not set in tags for Microsoft.Network/networkInterfaces")
+		}
+
+		if _, ok := disk.Tags["some_tag_3"]; !ok {
+			return errors.New("some_tag_3 was not set in tags for Microsoft.Network/networkInterfaces")
+		}
+
+		if _, ok := disk.Tags["some_tag_4"]; !ok {
+			return errors.New("some_tag_4 was not set in tags for Microsoft.Network/networkInterfaces")
+		}
+
+		if *disk.Tags["some_tag_3"] != "some_tag_3_value" ||
+			*disk.Tags["some_tag_4"] != "some_tag_4_value" ||
+			*disk.Tags["some_tag_2"] != "some_tag_2_value" ||
+			*disk.Tags["foo"] != "bar" {
+			return errors.New("tags for Microsoft.Network/networkInterfaces not correct")
+		}
+	}
+	return nil
+}
+
+// we want to verify that the global tags and the tags for specific resource types and are set
+func testAccArrayTags(resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("Managed Application not found: %s", resourceName)
+		}
+
+		ctx := context.Background()
+		azureClient, diags := testAccProvider.Meta().(*CbsService).azureClientService(ctx)
+		if diags.HasError() {
+			return fmt.Errorf("err: %+v", diags)
+		}
+
+		if err := checkVirtualMachineTags(ctx, azureClient, rs.Primary.Attributes["managed_resource_group_name"]); err != nil {
+			return err
+		}
+
+		if err := checkNetworkInterfacesTags(ctx, azureClient, rs.Primary.Attributes["managed_resource_group_name"]); err != nil {
+			return err
+		}
+
+		return nil
+	}
 }
 
 func testAccArrayAzureExists(resourceName string) resource.TestCheckFunc {
@@ -397,9 +565,6 @@ func testAccCheckAzureCommonAttrsCheck(resourceName string, arrayName string, or
 		resource.TestCheckResourceAttr(resourceName, "log_sender_domain", orgDomain),
 		resource.TestCheckResourceAttr(resourceName, "pureuser_private_key_path", cbsAzureParam.PureuserPrivateKeyPath),
 		resource.TestCheckResourceAttr(resourceName, "resource_group_name", cbsAzureParam.ResourceGroupName),
-		resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
-		resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
-		resource.TestCheckResourceAttr(resourceName, "tags.test", "value"),
 		resource.TestCheckResourceAttr(resourceName, "virtual_network_id", cbsAzureParam.VirtualNetworkId),
 		resource.TestCheckResourceAttr(resourceName, "zone", "3"),
 		resource.TestCheckResourceAttr(resourceName, "system_subnet", cbsAzureParam.SystemSubnet),
