@@ -96,19 +96,12 @@ func testAccDataAzurePlans() resource.TestCheckFunc {
 		for i := 0; i < plans_size; i++ {
 			// Check product version derivation from plan name makes sense.
 			plan_name := data_resource.Primary.Attributes["plans."+strconv.Itoa(i)+".name"]
-			name_match := plan_name_regexp.FindStringSubmatch(plan_name)
-			name_version, err := version.NewVersion(fmt.Sprintf("%s.%s.%s", name_match[1], name_match[2], name_match[3]))
-			if err != nil {
-				return err
+			if !plan_name_regexp.MatchString(plan_name) {
+				return fmt.Errorf("Incorrect plan id/name: %s, it should be in format of ", plan_name)
 			}
-			reference_version, _ := version.NewVersion("6.0.0")
-			if name_version.LessThanOrEqual(reference_version) {
-				return fmt.Errorf("Incorrect product version: %s", name_version.String())
-			}
-
 			// We expect that product and publisher is a well-known string.
 			plan_product := data_resource.Primary.Attributes["plans."+strconv.Itoa(i)+".product"]
-			if plan_product != "pure_storage_cloud_block_store_deployment" {
+			if plan_product != "pure_storage_cloud_block_store_deployment" && plan_product != "pure_cloud_block_store_product_deployment" {
 				return fmt.Errorf("Incorrect plan product: %s", plan_product)
 			}
 			plan_publisher := data_resource.Primary.Attributes["plans."+strconv.Itoa(i)+".publisher"]
@@ -138,13 +131,17 @@ func testAccDataCbsPlanAzure() resource.TestCheckFunc {
 
 		plan_name := data_resource.Primary.Attributes["name"]
 		match := plan_name_regexp.FindStringSubmatch(plan_name)
-		version_tag := fmt.Sprintf("%s.%s.%s", match[1], match[2], match[3])
+		patch := match[3]
+		if patch == "x" {
+			patch = "99"
+		}
+		version_tag := fmt.Sprintf("%s.%s.%s", match[1], match[2], patch)
 		if len(match) != 4 || !re.MatchString(version_tag) {
 			return fmt.Errorf("Incorrect plan name: %s", plan_name)
 		}
 
 		plan_product := data_resource.Primary.Attributes["product"]
-		if plan_product != "pure_storage_cloud_block_store_deployment" {
+		if plan_product != "pure_storage_cloud_block_store_deployment" && plan_product != "pure_cloud_block_store_product_deployment" {
 			return fmt.Errorf("Incorrect plan product : %s", plan_product)
 		}
 

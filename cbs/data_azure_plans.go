@@ -125,7 +125,7 @@ func (a PlanByVersion) Len() int           { return len(a) }
 func (a PlanByVersion) Less(i, j int) bool { return a[i].Version.LessThan(&a[j].Version) }
 func (a PlanByVersion) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
-var plan_name_regexp = regexp.MustCompile(`^[\w]+_([\d]+)_([\d]+)_([\d]+)$`)
+var plan_name_regexp = regexp.MustCompile(`^[\w]+_([\d]+)_([\d]+)_(x)$`)
 
 // Retrieve a plan information from Azure DefaultTemplate artifact
 func GetPlanFromTemplateJson(data []byte) (*Plan, error) {
@@ -152,7 +152,11 @@ func versionPlans(plans []Plan) ([]VersionedPlan, error) {
 	var versioned_plans []VersionedPlan
 	for _, plan := range plans {
 		match := plan_name_regexp.FindStringSubmatch(plan.Name)
-		version, err := version.NewVersion(fmt.Sprintf("%s.%s.%s", match[1], match[2], match[3]))
+		patch := match[3]
+		if patch == "x" {
+			patch = "99"
+		}
+		version, err := version.NewVersion(fmt.Sprintf("%s.%s.%s", match[1], match[2], patch))
 		if err != nil {
 			return nil, fmt.Errorf("Unable to parse version string in plan name: %s", plan.Name)
 		}

@@ -23,7 +23,7 @@ setup-basic:
 	@mkdir -p .build-logs/
 
 setup-goreleaser:
-	@curl -sfLO https://github.com/goreleaser/goreleaser/releases/download/v1.9.2/goreleaser_Linux_x86_64.tar.gz
+	@curl -sfLO https://github.com/goreleaser/goreleaser/releases/download/v2.0.1/goreleaser_Linux_x86_64.tar.gz
 	@mkdir -p $(TMPBIN)
 	@tar -C $(TMPBIN) -xf goreleaser_Linux_x86_64.tar.gz
 	@rm goreleaser_Linux_x86_64.tar.gz
@@ -36,7 +36,7 @@ test-goreleaser-release: setup-goreleaser setup-basic
 	@gpg --batch --delete-secret-keys $(TEST_GPG_FINGERPRINT) &>/dev/null || true
 	@gpg --batch --delete-keys $(TEST_GPG_FINGERPRINT) &>/dev/null || true
 	@gpg --import < testing/private-key.gpg >> .build-logs/goreleaser-release 2>&1
-	@GPG_FINGERPRINT=$(TEST_GPG_FINGERPRINT) CI="" goreleaser release --debug --snapshot --rm-dist >> .build-logs/goreleaser-release 2>&1
+	@GPG_FINGERPRINT=$(TEST_GPG_FINGERPRINT) CI="" goreleaser release --verbose --snapshot --clean >> .build-logs/goreleaser-release 2>&1
 
 test-goreleaser-check: setup-goreleaser setup-basic
 	@CI="" goreleaser check >> .build-logs/goreleaser-check 2>&1

@@ -142,11 +142,11 @@ func validateAzureManagedApplicationName(v interface{}, k string) (warnings []st
 func validateVersionPrefixTag(v interface{}, k string) (warnings []string, errors []error) {
 	value := v.(string)
 
-	pattern := `^\d+\.\d+(?:\.\d+|\.x)?$`
+	pattern := `^\d+\.\d+\.x$`
 	regexpPattern := regexp.MustCompile(pattern)
 
 	if !regexpPattern.MatchString(value) {
-		errors = append(errors, fmt.Errorf("version prefix tag format not correct"))
+		errors = append(errors, fmt.Errorf("%q must follow {major}.{minor}.x format. See documentation for examples", k))
 	}
 
 	return warnings, errors
