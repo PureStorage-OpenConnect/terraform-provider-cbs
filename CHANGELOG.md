@@ -1,3 +1,7 @@
+## 0.11.0 (Sep, 20, 2024)
+* Added support for V10MP2R2 model
+* Removed support for specifying version plan by specific version (e.g `6.6.4`)
+
 ## 0.10.0 (July 9, 2024)
 
 * Added support for tagging by resource type, refer to the [documentation](docs/resources/array_azure.md#nested-schema-for-resource_tags)

@@ -49,7 +49,7 @@ func TestAccArrayAzure_basic(t *testing.T) {
 	// when tags are provided plan is needed to get plan specific
 	// list of resources to assign all tags to each resource
 	cbsAzureParam.PlanName = plans[0].Plan.Name
-	cbsAzureParam.PlanProduct = "pure_storage_cloud_block_store_deployment"
+	cbsAzureParam.PlanProduct = plans[0].Plan.Product
 	cbsAzureParam.PlanPublisher = "purestoragemarketplaceadmin"
 	cbsAzureParam.PlanVersion = plans[0].Plan.Version
 

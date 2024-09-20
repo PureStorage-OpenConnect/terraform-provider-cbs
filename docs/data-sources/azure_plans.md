@@ -8,11 +8,11 @@ description: |-
 
 # cbs_plan_azure (Data Source)
 
-Provides plan specific details specified by plan version parameter (or version prefix e.g. `6.6.4` or `6.6.x`)
+Provides plan specific details specified by plan version parameter. The version needs to be specified in format of version prefix e.g. `6.5.x` or `6.6.x` and similar. Specific versions like `6.6.10` are not supported as only the latest version in a given release line is svailable in the marketplace offer for deployment.
 
 ## Example Usage
 ```hcl
-data "cbs_plan_azure" "66x_latest_plan" {
+data "cbs_plan_azure" "cbs_plan_66x" {
     plan_version = "6.6.x"
 }
 
@@ -20,10 +20,10 @@ resource "cbs_array_azure" "azure_instance" {
     (...)
 
     plan {
-        name = data.cbs_plan_azure.66x_latest_plan.name
-        product = data.cbs_plan_azure.66x_latest_plan.product
-        publisher = data.cbs_plan_azure.66x_latest_plan.publisher
-        version = data.cbs_plan_azure.66x_latest_plan.version
+        name = data.cbs_plan_azure.cbs_plan_66x.name
+        product = data.cbs_plan_azure.cbs_plan_66x.product
+        publisher = data.cbs_plan_azure.cbs_plan_66x.publisher
+        version = data.cbs_plan_azure.cbs_plan_66x.version
     }
 
     lifecycle {
@@ -34,7 +34,7 @@ resource "cbs_array_azure" "azure_instance" {
 }
 
 output "cbs_azure_available_plans" {
-    value = data.cbs_plan_azure.66x_latest_plan
+    value = data.cbs_plan_azure.cbs_plan_66x
 }
 ```
 

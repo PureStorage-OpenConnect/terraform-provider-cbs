@@ -103,7 +103,7 @@ resource "cbs_array_azure" "azure_instance" {
 ## Argument Reference
 
 - `alert_recipients` (Optional) - List of email addresses to receive alerts.
-- `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1`, `V20MUR1` or `V20MP2R2`.
+- `array_model` (Required) - CBS array size to launch. The possible values are `V10MUR1`, `V20MUR1`, `V10MP2R2` or `V20MP2R2`.
 - `array_name` (Required) - Name of the array, and the name of the managed application.
 Required when the array is deployed for use in a Fusion cluster.
 - `iscsi_subnet` (Required) - Subnet containing the iSCSI interfaces on the array.

@@ -51,8 +51,8 @@ import (
 
 // Default managed application plan
 const (
-	defaultPlanName      = "cbs_azure_6_3_8"
-	defaultPlanProduct   = "pure_storage_cloud_block_store_deployment"
+	defaultPlanName      = "cbs_azure_6_5_x"
+	defaultPlanProduct   = "pure_cloud_block_store_product_deployment"
 	defaultPlanPublisher = "purestoragemarketplaceadmin"
 	defaultPlanVersion   = "1.0.0"
 )
@@ -166,6 +166,7 @@ func resourceArrayAzure() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"V10MUR1",
 					"V20MUR1",
+					"V10MP2R2",
 					"V20MP2R2",
 				}, false),
 			},
