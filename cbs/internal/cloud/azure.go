@@ -41,6 +41,7 @@ import (
 
 	vaultSecret "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	vaultManagement "github.com/Azure/azure-sdk-for-go/services/preview/keyvault/mgmt/2020-04-01-preview/keyvault"
+	"github.com/manicminer/hamilton/environments"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/managedapplications"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
@@ -128,6 +129,31 @@ func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientA
 		SupportsAzureCliToken:    true,
 	}
 
+	useOIDCAuth := false
+	useMSAL := false
+	if os.Getenv("TF_ACC_USE_OIDC") != "" {
+		useOIDCAuth = true
+	}
+
+	// Temporary workaround for Vault migration until we do PURE-384171
+	// which is essentialy to use azidentity for auth, however that requires
+	// more significant refactoring of how we use the SDK. The migration guide
+	// https://github.com/Azure/azure-sdk-for-go/blob/main/sdk/azidentity/MIGRATION.md
+	if useOIDCAuth {
+		builder.SubscriptionID = os.Getenv("AZURE_SUBSCRIPTION_ID")
+		builder.TenantID = os.Getenv("AZURE_TENANT_ID")
+		builder.ClientID = os.Getenv("AZURE_CLIENT_ID")
+		builder.SupportsOIDCAuth = true
+		builder.IDTokenRequestURL = os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL")
+		builder.IDTokenRequestToken = os.Getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+		// OIDC is not without Microsoft Graph
+		// https://github.com/hashicorp/go-azure-helpers/blob/d43458d68a62a2d14d08ee543e67a7a2d301ad8d/authentication/auth_method_oidc.go#L40
+		builder.UseMicrosoftGraph = true
+		// OIDC only supports MSAL tokens
+		// https://github.com/hashicorp/go-azure-helpers/blob/d43458d68a62a2d14d08ee543e67a7a2d301ad8d/authentication/auth_method_oidc.go#L48
+		useMSAL = true
+	}
+
 	config, err := builder.Build()
 	if err != nil {
 		return nil, err
@@ -149,15 +175,32 @@ func buildAzureClient(ctx context.Context, userConfig AzureConfig) (AzureClientA
 	}
 
 	sender := sender.BuildSender("cbs")
-	auth, err := config.GetADALToken(ctx, sender, oauthConfig, env.TokenAudience)
-	if err != nil {
-		return nil, err
+
+	var auth, graphAuth, vaultAuthorizer autorest.Authorizer = nil, nil, nil
+	var authErr error = nil
+	if useMSAL {
+		auth, authErr = config.GetMSALToken(ctx, environments.ResourceManagerPublic, sender, oauthConfig, env.TokenAudience)
+	} else {
+		auth, authErr = config.GetADALToken(ctx, sender, oauthConfig, env.TokenAudience)
 	}
-	graphAuth, err := config.GetADALToken(ctx, sender, oauthConfig, env.GraphEndpoint)
-	if err != nil {
-		return nil, err
+	if authErr != nil {
+		return nil, authErr
 	}
-	vaultAuthorizer := config.ADALBearerAuthorizerCallback(ctx, sender, oauthConfig)
+
+	if useMSAL {
+		graphAuth, authErr = config.GetMSALToken(ctx, environments.MsGraphGlobal, sender, oauthConfig, env.GraphEndpoint)
+	} else {
+		graphAuth, authErr = config.GetADALToken(ctx, sender, oauthConfig, env.GraphEndpoint)
+	}
+	if authErr != nil {
+		return nil, authErr
+	}
+
+	if useMSAL {
+		vaultAuthorizer = config.MSALBearerAuthorizerCallback(ctx, environments.KeyVaultPublic, sender, oauthConfig, env.KeyVaultEndpoint)
+	} else {
+		vaultAuthorizer = config.ADALBearerAuthorizerCallback(ctx, sender, oauthConfig)
+	}
 
 	vaultSecretClient := vaultSecret.New()
 	vaultSecretClient.Authorizer = vaultAuthorizer

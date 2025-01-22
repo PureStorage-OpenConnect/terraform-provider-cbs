@@ -61,7 +61,7 @@ resource "azurerm_key_vault" "cbs_key_vault" {
 }
 
 data "cbs_plan_azure" "version_plan" {
-    plan_version = "6.6.x"
+    plan_version = "6.8.x"
 }
 
 resource "cbs_array_azure" "azure_instance" {

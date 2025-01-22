@@ -28,6 +28,11 @@ const (
 	// when using Service Principal auth.
 	EnvTfAccSkipUserPrincipalAuth = "TF_ACC_SKIP_USER_PRINCIPAL_AUTH"
 
+	// Environment variable controlling if the Azure acceptance tests
+	// for service principal should be run. This testing is not available
+	// when using OIDC auth.
+	EnvTfAccSkipServicePrincipalAuth = "TF_ACC_SKIP_SERVICE_PRINCIPAL_AUTH"
+
 	// Environment variable for controlling the Azure acceptance tests
 	// related to deploying an CBS Fusion app from an App Definition
 	EnvTfAccAzureSkipFusionAppId = "TC_ACC_SKIP_AZURE_FUSION_APP_ID"

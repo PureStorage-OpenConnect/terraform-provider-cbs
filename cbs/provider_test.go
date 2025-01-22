@@ -194,6 +194,10 @@ func TestAccProvider_azureCLIAuth(t *testing.T) {
 }
 
 func TestAccProvider_azureServicePrincipalAuth(t *testing.T) {
+	if os.Getenv(acceptance.EnvTfAccSkipServicePrincipalAuth) != "" {
+		t.Skip("Skipping due to env variable set")
+	}
+
 	if os.Getenv("TF_ACC") == "" {
 		return
 	}

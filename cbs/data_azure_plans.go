@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-version"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -125,7 +126,7 @@ func (a PlanByVersion) Len() int           { return len(a) }
 func (a PlanByVersion) Less(i, j int) bool { return a[i].Version.LessThan(&a[j].Version) }
 func (a PlanByVersion) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
-var plan_name_regexp = regexp.MustCompile(`^[\w]+_([\d]+)_([\d]+)_(x)$`)
+var plan_name_regexp = regexp.MustCompile(`^[\w]+_([\d]+)_([\d]+)_([\d]+|x)$`)
 
 // Retrieve a plan information from Azure DefaultTemplate artifact
 func GetPlanFromTemplateJson(data []byte) (*Plan, error) {
@@ -148,17 +149,22 @@ func GetPlanFromTemplateJson(data []byte) (*Plan, error) {
 	return &unmarshalled_plan, nil
 }
 
-func versionPlans(plans []Plan) ([]VersionedPlan, error) {
+func versionPlans(ctx context.Context, plans []Plan) ([]VersionedPlan, error) {
 	var versioned_plans []VersionedPlan
 	for _, plan := range plans {
 		match := plan_name_regexp.FindStringSubmatch(plan.Name)
+		// Plan does not match our standard name schema but we want it to show it but treat it as 0.0.0
+		if len(match) < 4 {
+			tflog.Debug(ctx, fmt.Sprintf("Found plan '%s' not matching standard scheme", plan.Name))
+			match = []string{"0", "0", "0", "0"}
+		}
 		patch := match[3]
 		if patch == "x" {
 			patch = "99"
 		}
 		version, err := version.NewVersion(fmt.Sprintf("%s.%s.%s", match[1], match[2], patch))
 		if err != nil {
-			return nil, fmt.Errorf("Unable to parse version string in plan name: %s", plan.Name)
+			return nil, fmt.Errorf("unable to parse version string in plan name: %s", plan.Name)
 		}
 		versioned_plans = append(versioned_plans, VersionedPlan{*version, plan})
 	}
@@ -175,13 +181,15 @@ func QueryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
 
 	var template_plans []Plan
 	for _, response_result := range productSummary.Results {
+		// Filter out non Cloud Block Store offers, unfortunatelly the API does not have offer/product ID available so we need
+		// to take a look at the inner plans to filter out offers we do not want
+		if len(response_result.Plans) == 0 || !strings.HasPrefix(*response_result.Plans[0].UniquePlanID, marketplacePlanIdPrefix) {
+			tflog.Debug(ctx, fmt.Sprintf("Skipping non Cloud Block Store offer %s", *response_result.DisplayName))
+			continue
+		}
+		tflog.Debug(ctx, fmt.Sprintf("Processing plans under offer %s", *response_result.DisplayName))
 		for _, response_plan := range response_result.Plans {
-			if !strings.HasPrefix(*response_plan.PlanID, "cbs_azure") {
-				// Exclude any plans which aren't the Pure Cloud Block Store on Azure offering.
-				// E.g. the Pure Fusion Storage Endpoint Collection offerings.
-				continue
-			}
-
+			tflog.Debug(ctx, fmt.Sprintf("Processing plan %s", *response_plan.PlanID))
 			for _, response_artifact := range response_plan.Artifacts {
 				if *response_artifact.Name != "DefaultTemplate" {
 					continue
@@ -202,7 +210,7 @@ func QueryMarketplaceForPlans(ctx context.Context) ([]VersionedPlan, error) {
 		}
 	}
 
-	return versionPlans(template_plans)
+	return versionPlans(ctx, template_plans)
 }
 
 func dataSourceAzurePlansRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
