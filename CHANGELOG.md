@@ -1,3 +1,7 @@
+## 0.11.1 (Mar, 13, 2024)
+* Fixed issue with deploying private plans
+* Fixed issue with listing available marketplace plans
+
 ## 0.11.0 (Sep, 20, 2024)
 * Added support for V10MP2R2 model
 * Removed support for specifying version plan by specific version (e.g `6.6.4`)

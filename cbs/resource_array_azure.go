@@ -57,6 +57,28 @@ const (
 	defaultPlanVersion   = "1.0.0"
 )
 
+const marketplacePlanIdPrefix = "purestoragemarketplaceadmin.pure_cloud_block_store_product_deployment"
+
+var staticResourceList = []string{
+	"Microsoft.Solutions/applications",
+	"Microsoft.Resources/tags",
+	"Microsoft.Compute/virtualMachines",
+	"Microsoft.Network/networkInterfaces",
+	"Microsoft.DocumentDB/databaseAccounts",
+	"Microsoft.Storage/storageAccounts",
+	"Microsoft.ManagedIdentity/userAssignedIdentities",
+	"Microsoft.KeyVault/vaults",
+	"Microsoft.Network/loadBalancers",
+	"Microsoft.Network/publicIPAddresses",
+	"Microsoft.Compute/disks",
+	"Microsoft.Compute/virtualMachines/extensions",
+	"Microsoft.Network/networkSecurityGroups",
+	"Microsoft.Network/applicationSecurityGroups",
+	"Microsoft.Compute/capacityReservationGroups",
+	"Microsoft.Compute/capacityReservationGroups/capacityReservations",
+	"Microsoft.Resources/deploymentScripts",
+}
+
 var azureParams = []interface{}{
 	"arrayName",
 	"licenseKey",
@@ -407,43 +429,61 @@ func GetResourcesFromTemplateJson(data []byte) ([]string, error) {
 	return resources, nil
 }
 
-func GetPlanArtifacts(ctx context.Context, planName string) (map[string]*appcatalog.Artifact, error) {
+func GetPlanArtifacts(ctx context.Context, plan Plan) (map[string]*appcatalog.Artifact, error) {
 	productSummary, err := GetProductSummary(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, response_result := range productSummary.Results {
+		// Filter out non Cloud Block Store offers, unfortunatelly the API does not have offer/product ID available so we need
+		// to take a look at the inner plans to filter out offers we do not want
+		if len(response_result.Plans) == 0 || !strings.HasPrefix(*response_result.Plans[0].UniquePlanID, marketplacePlanIdPrefix) {
+			tflog.Debug(ctx, fmt.Sprintf("Skipping non Cloud Block Store offer %s", *response_result.DisplayName))
+			continue
+		}
+		tflog.Debug(ctx, fmt.Sprintf("Processing plans under offer %s", *response_result.DisplayName))
 		for _, response_plan := range response_result.Plans {
-			if !strings.HasPrefix(*response_plan.PlanID, "cbs_azure") {
+			if plan.Name != *response_plan.PlanID {
+				tflog.Debug(ctx, fmt.Sprintf("Skipping non matching plan %s", *response_plan.PlanID))
 				continue
 			}
+			tflog.Debug(ctx, fmt.Sprintf("Found matching plan %s", *response_plan.PlanID))
 
 			artifacts := make(map[string]*appcatalog.Artifact)
-			var plan *Plan
+			var templatePlan *Plan
 			for _, response_artifact := range response_plan.Artifacts {
 				artifacts[*response_artifact.Name] = response_artifact
-				// we get the current plan from Default Template
+				// Get the plan properties from the DefaultTemplate artifact to verify integrity
 				if *response_artifact.Name == "DefaultTemplate" {
 					template_data, err := downloadToBuffer(*response_artifact.URI)
 					if err != nil {
-						return artifacts, err
+						return nil, err
 					}
 
-					plan, err = GetPlanFromTemplateJson(template_data)
+					templatePlan, err = GetPlanFromTemplateJson(template_data)
 					if err != nil {
-						return artifacts, err
+						return nil, err
 					}
 				}
 			}
-
-			if plan.Name == planName {
-				return artifacts, nil
+			// Verify the integrity of the artifact and that it matches our expectations
+			if templatePlan.Name != plan.Name {
+				return nil, fmt.Errorf("mismatch between planID in marketplace DefaultTemplate")
 			}
+			if templatePlan.Product != plan.Product {
+				return nil, fmt.Errorf("mismatch between product in marketplace response and DefaultTemplate")
+			}
+			if templatePlan.Publisher != plan.Publisher {
+				return nil, fmt.Errorf("mismatch between publisher in marketplace response and DefaultTemplate")
+			}
+			if templatePlan.Version != plan.Version {
+				return nil, fmt.Errorf("mismatch between plan version in marketplace response and DefaultTemplate")
+			}
+			return artifacts, nil
 		}
 	}
-
-	return nil, fmt.Errorf("plan %s not found to get artifacts", planName)
+	return nil, fmt.Errorf("could not find plan %s in marketplace in order to get Cloud Block Store artifacts", plan.Name)
 }
 
 func GetProductSummary(ctx context.Context) (appcatalog.SearchClientGetResponse, error) {
@@ -460,12 +500,8 @@ func GetResourceListFromUiDefinitionUrl(url string) ([]string, error) {
 	return GetResourcesFromTemplateJson(template_data)
 }
 
-func getPlanResources(ctx context.Context, p interface{}) ([]string, error) {
-	planInterface := p.([]interface{})[0]
-	plan := planInterface.(map[string]interface{})
-	planName := plan["name"].(string)
-
-	artifacts, err := GetPlanArtifacts(ctx, planName)
+func getPlanResources(ctx context.Context, plan Plan) ([]string, error) {
+	artifacts, err := GetPlanArtifacts(ctx, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -516,9 +552,17 @@ func getResourcesForCurrentDeployment(ctx context.Context, azureClient cloud.Azu
 	}
 
 	if planParam, ok := d.GetOk("plan"); ok {
-		resources, err = getPlanResources(ctx, planParam)
+		// We rely on Terraform framework here that this will always be convertible, otherwise we would panic
+		planDecoded := planParam.([]interface{})[0].(map[string]interface{})
+		plan := Plan{
+			Name:      planDecoded["name"].(string),
+			Product:   planDecoded["product"].(string),
+			Publisher: planDecoded["publisher"].(string),
+			Version:   planDecoded["version"].(string),
+		}
+		resources, err = getPlanResources(ctx, plan)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve resource list based on plan %+v", err)
+			return nil, fmt.Errorf("could not get resource list from plan %s: %+v", plan.Name, err)
 		}
 	}
 
@@ -639,13 +683,17 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	parameters.Identity = expandIdentityObject(identities)
 
+	// Fetch the list of resources which will be deployed. We rely on createUiDefinition.json artifact which should
+	// be available through the marketplace api in case of public plans. In case that the plan is not available in
+	// the marketplace API for any reason we fall back to a statically defined list.
+	resources, err := getResourcesForCurrentDeployment(ctx, azureClient, d)
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf("Could not get resource list for current deployment, falling back to static resource list: %s", err))
+		resources = staticResourceList
+	}
+
 	tagsMap := make(map[string]interface{})
 	if v, ok := d.GetOk("tags"); ok {
-		resources, err := getResourcesForCurrentDeployment(ctx, azureClient, d)
-		if err != nil {
-			return diag.Errorf("cannot get resource list %+v", err)
-		}
-
 		tags := v.(map[string]interface{})
 		for _, tag := range resources {
 			copyMap := make(map[string]interface{})
@@ -657,11 +705,6 @@ func resourceArrayAzureCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 
 	if v, ok := d.GetOk("resource_tags"); ok {
-		resources, err := getResourcesForCurrentDeployment(ctx, azureClient, d)
-		if err != nil {
-			return diag.Errorf("cannot get resource list %+v", err)
-		}
-
 		resource_tags := v.([]interface{})
 		for _, resource_tag := range resource_tags {
 			resource := resource_tag.(map[string]interface{})["resource"].(string)

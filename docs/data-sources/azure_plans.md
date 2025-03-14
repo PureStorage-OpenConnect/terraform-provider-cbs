@@ -8,7 +8,7 @@ description: |-
 
 # cbs_plan_azure (Data Source)
 
-Provides plan specific details specified by plan version parameter. The version needs to be specified in format of version prefix e.g. `6.5.x` or `6.6.x` and similar. Specific versions like `6.6.10` are not supported as only the latest version in a given release line is svailable in the marketplace offer for deployment.
+Provides plan specific details specified by plan version parameter. The version needs to be specified in format of version prefix e.g. `6.7.x` or `6.8.x` and similar. Specific versions like `6.8.2` are not supported as only the latest version in a given release line is svailable in the marketplace offer for deployment.
 
 ## Example Usage
 ```hcl
