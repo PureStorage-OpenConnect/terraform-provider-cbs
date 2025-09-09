@@ -190,6 +190,7 @@ func resourceArrayAzure() *schema.Resource {
 					"V20MUR1",
 					"V10MP2R2",
 					"V20MP2R2",
+					"V50MP2R2",
 				}, false),
 			},
 
