@@ -1,3 +1,6 @@
+## 0.11.2 (Sep, 9, 2025)
+* Add support for V50MP2R2 SKU
+
 ## 0.11.1 (Mar, 13, 2024)
 * Fixed issue with deploying private plans
 * Fixed issue with listing available marketplace plans
